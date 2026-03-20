@@ -134,26 +134,26 @@ export function StaffPage() {
     <div className="min-h-screen bg-gray-50">
       {/* ──────────────── HEADER ──────────────── */}
       <header className="border-b border-gray-200 bg-white">
-        <div className="mx-auto flex max-w-7xl flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6 lg:px-8">
-          <div className="flex items-center gap-3">
-            <Stethoscope className="h-6 w-6 text-indigo-600" />
-            <h1 className="text-xl font-semibold text-gray-900">Personal</h1>
+        <div className="mx-auto flex max-w-7xl flex-col gap-3 px-3 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-6 sm:py-4 lg:px-8">
+          <div className="flex items-center gap-2 sm:gap-3">
+            <Stethoscope className="h-5 w-5 sm:h-6 sm:w-6 text-indigo-600" />
+            <h1 className="text-lg sm:text-xl font-semibold text-gray-900">Personal</h1>
           </div>
 
-          {/* Summary bar */}
-          <div className="flex flex-wrap items-center gap-4 text-sm text-gray-600">
+          {/* Summary bar – stacked on mobile, inline on sm+ */}
+          <div className="flex flex-col gap-1.5 text-xs sm:flex-row sm:flex-wrap sm:items-center sm:gap-4 sm:text-sm text-gray-600">
             <span className="inline-flex items-center gap-1.5">
-              <Users className="h-4 w-4 text-indigo-500" />
+              <Users className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-indigo-500" />
               <strong className="font-semibold text-gray-900">{stats.waitingCount}</strong> väntar
             </span>
             <span className="hidden sm:inline text-gray-300">|</span>
             <span className="inline-flex items-center gap-1.5">
-              <Activity className="h-4 w-4 text-emerald-500" />
+              <Activity className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-emerald-500" />
               <strong className="font-semibold text-gray-900">{stats.activeRooms}</strong> rum aktiva
             </span>
             <span className="hidden sm:inline text-gray-300">|</span>
             <span className="inline-flex items-center gap-1.5">
-              <Clock className="h-4 w-4 text-amber-500" />
+              <Clock className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-amber-500" />
               snitt väntetid{' '}
               <strong className="font-semibold text-gray-900">{stats.avgWaitMinutes} min</strong>
             </span>
@@ -162,13 +162,13 @@ export function StaffPage() {
       </header>
 
       {/* ──────────────── BODY ──────────────── */}
-      <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
-        <div className="flex flex-col gap-6 lg:flex-row">
+      <div className="mx-auto max-w-7xl px-3 py-4 sm:px-6 sm:py-6 lg:px-8">
+        <div className="flex flex-col gap-4 sm:gap-6 lg:flex-row">
           {/* ═══════════ LEFT: Main panel ═══════════ */}
-          <div className="flex-1 space-y-6">
+          <div className="flex-1 space-y-4 sm:space-y-6">
             {/* Room selector */}
-            <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
-              <label htmlFor="room-select" className="mb-2 block text-sm font-medium text-gray-700">
+            <div className="rounded-xl border border-gray-200 bg-white p-3 sm:p-4 shadow-sm">
+              <label htmlFor="room-select" className="mb-1.5 sm:mb-2 block text-sm font-medium text-gray-700">
                 Välj ditt rum
               </label>
               <div className="relative">
@@ -196,28 +196,28 @@ export function StaffPage() {
             {selectedRoom && (
               <div className="rounded-xl border border-gray-200 bg-white shadow-sm">
                 {/* Panel header */}
-                <div className="flex items-center justify-between border-b border-gray-100 px-6 py-4">
-                  <div className="flex items-center gap-3">
-                    <h2 className="text-lg font-semibold text-gray-900">{selectedRoom.name}</h2>
+                <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3 sm:px-6 sm:py-4">
+                  <div className="flex items-center gap-2 sm:gap-3">
+                    <h2 className="text-base sm:text-lg font-semibold text-gray-900">{selectedRoom.name}</h2>
                     <StatusBadge status={selectedRoom.status} />
                   </div>
                   {selectedRoom.staffName && (
-                    <span className="text-sm text-gray-500">{selectedRoom.staffName}</span>
+                    <span className="text-xs sm:text-sm text-gray-500">{selectedRoom.staffName}</span>
                   )}
                 </div>
 
                 {/* Panel body */}
-                <div className="px-6 py-8">
+                <div className="px-4 py-6 sm:px-6 sm:py-8">
                   {/* ── CLOSED ── */}
                   {selectedRoom.status === 'closed' && (
-                    <div className="flex flex-col items-center gap-6 py-8">
-                      <DoorClosed className="h-16 w-16 text-gray-300" />
-                      <p className="text-lg text-gray-500">Rummet är stängt</p>
+                    <div className="flex flex-col items-center gap-4 sm:gap-6 py-6 sm:py-8">
+                      <DoorClosed className="h-12 w-12 sm:h-16 sm:w-16 text-gray-300" />
+                      <p className="text-base sm:text-lg text-gray-500">Rummet är stängt</p>
                       <button
                         onClick={handleOpen}
-                        className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-8 py-4 text-lg font-semibold text-white shadow-md transition hover:bg-indigo-700 active:scale-[0.98]"
+                        className="inline-flex w-full sm:w-auto items-center justify-center gap-2 rounded-xl bg-indigo-600 px-8 py-4 text-base sm:text-lg font-semibold text-white shadow-md transition hover:bg-indigo-700 active:scale-[0.98] min-h-[44px]"
                       >
-                        <DoorOpen className="h-6 w-6" />
+                        <DoorOpen className="h-5 w-5 sm:h-6 sm:w-6" />
                         Öppna rum
                       </button>
                     </div>
@@ -225,9 +225,9 @@ export function StaffPage() {
 
                   {/* ── OPEN (no patient) ── */}
                   {selectedRoom.status === 'open' && (
-                    <div className="flex flex-col items-center gap-6 py-4">
-                      <DoorOpen className="h-16 w-16 text-emerald-300" />
-                      <p className="text-base text-gray-500">
+                    <div className="flex flex-col items-center gap-4 sm:gap-6 py-2 sm:py-4">
+                      <DoorOpen className="h-12 w-12 sm:h-16 sm:w-16 text-emerald-300" />
+                      <p className="text-sm sm:text-base text-gray-500 text-center">
                         {waitingPatients.length > 0
                           ? `${waitingPatients.length} patient${waitingPatients.length === 1 ? '' : 'er'} väntar i kön`
                           : 'Inga patienter i kö just nu'}
@@ -235,24 +235,24 @@ export function StaffPage() {
                       <button
                         onClick={handleCallNext}
                         disabled={waitingPatients.length === 0}
-                        className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-10 py-5 text-xl font-semibold text-white shadow-md transition hover:bg-emerald-700 active:scale-[0.98] disabled:cursor-not-allowed disabled:bg-gray-300 disabled:shadow-none"
+                        className="inline-flex w-full sm:w-auto items-center justify-center gap-2 rounded-xl bg-emerald-600 px-8 py-4 sm:px-10 sm:py-5 text-lg sm:text-xl font-semibold text-white shadow-md transition hover:bg-emerald-700 active:scale-[0.98] disabled:cursor-not-allowed disabled:bg-gray-300 disabled:shadow-none min-h-[44px]"
                       >
-                        <UserRoundCheck className="h-7 w-7" />
+                        <UserRoundCheck className="h-6 w-6 sm:h-7 sm:w-7" />
                         Nästa patient
                       </button>
 
                       {/* Secondary actions */}
-                      <div className="flex gap-3 pt-2">
+                      <div className="flex flex-col sm:flex-row w-full sm:w-auto gap-2 sm:gap-3 pt-2">
                         <button
                           onClick={handleTogglePause}
-                          className="inline-flex items-center gap-1.5 rounded-lg border border-amber-300 bg-amber-50 px-4 py-2.5 text-sm font-medium text-amber-700 transition hover:bg-amber-100"
+                          className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-amber-300 bg-amber-50 px-4 py-2.5 text-sm font-medium text-amber-700 transition hover:bg-amber-100 min-h-[44px]"
                         >
                           <Pause className="h-4 w-4" />
                           Pausa
                         </button>
                         <button
                           onClick={handleClose}
-                          className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 bg-gray-50 px-4 py-2.5 text-sm font-medium text-gray-600 transition hover:bg-gray-100"
+                          className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-gray-300 bg-gray-50 px-4 py-2.5 text-sm font-medium text-gray-600 transition hover:bg-gray-100 min-h-[44px]"
                         >
                           <XCircle className="h-4 w-4" />
                           Stäng rum
@@ -263,14 +263,14 @@ export function StaffPage() {
 
                   {/* ── OCCUPIED ── */}
                   {selectedRoom.status === 'occupied' && (
-                    <div className="flex flex-col items-center gap-6 py-2">
+                    <div className="flex flex-col items-center gap-4 sm:gap-6 py-2">
                       {/* Ticket number */}
                       <div className="flex flex-col items-center">
-                        <span className="text-sm font-medium uppercase tracking-wider text-gray-400">
+                        <span className="text-xs sm:text-sm font-medium uppercase tracking-wider text-gray-400">
                           Nuvarande patient
                         </span>
-                        <span className="mt-1 flex items-center gap-2 text-6xl font-bold tabular-nums text-blue-700">
-                          <Hash className="h-10 w-10 text-blue-400" />
+                        <span className="mt-1 flex items-center gap-1.5 sm:gap-2 text-4xl sm:text-6xl font-bold tabular-nums text-blue-700">
+                          <Hash className="h-7 w-7 sm:h-10 sm:w-10 text-blue-400" />
                           {selectedRoom.currentTicketNumber}
                         </span>
                       </div>
@@ -278,32 +278,32 @@ export function StaffPage() {
                       {/* Timer */}
                       <div className="flex items-center gap-2 rounded-full bg-blue-50 px-4 py-1.5 text-blue-700">
                         <Clock className="h-4 w-4" />
-                        <span className="text-lg font-semibold tabular-nums">{elapsed}</span>
+                        <span className="text-base sm:text-lg font-semibold tabular-nums">{elapsed}</span>
                       </div>
 
                       {/* Action buttons */}
-                      <div className="flex flex-wrap justify-center gap-4 pt-2">
+                      <div className="flex flex-col sm:flex-row w-full sm:w-auto justify-center gap-3 sm:gap-4 pt-2">
                         <button
                           onClick={handleComplete}
-                          className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-8 py-4 text-lg font-semibold text-white shadow-md transition hover:bg-emerald-700 active:scale-[0.98]"
+                          className="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-8 py-4 text-base sm:text-lg font-semibold text-white shadow-md transition hover:bg-emerald-700 active:scale-[0.98] min-h-[44px]"
                         >
-                          <UserRoundCheck className="h-6 w-6" />
+                          <UserRoundCheck className="h-5 w-5 sm:h-6 sm:w-6" />
                           Klar
                         </button>
                         <button
                           onClick={handleNoShow}
-                          className="inline-flex items-center gap-2 rounded-xl bg-red-600 px-8 py-4 text-lg font-semibold text-white shadow-md transition hover:bg-red-700 active:scale-[0.98]"
+                          className="inline-flex items-center justify-center gap-2 rounded-xl bg-red-600 px-8 py-4 text-base sm:text-lg font-semibold text-white shadow-md transition hover:bg-red-700 active:scale-[0.98] min-h-[44px]"
                         >
-                          <UserRoundX className="h-6 w-6" />
+                          <UserRoundX className="h-5 w-5 sm:h-6 sm:w-6" />
                           Utebliven
                         </button>
                       </div>
 
                       {/* Secondary actions */}
-                      <div className="flex gap-3 pt-2">
+                      <div className="flex w-full sm:w-auto gap-3 pt-2">
                         <button
                           onClick={handleClose}
-                          className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 bg-gray-50 px-4 py-2.5 text-sm font-medium text-gray-600 transition hover:bg-gray-100"
+                          className="inline-flex w-full sm:w-auto items-center justify-center gap-1.5 rounded-lg border border-gray-300 bg-gray-50 px-4 py-2.5 text-sm font-medium text-gray-600 transition hover:bg-gray-100 min-h-[44px]"
                         >
                           <XCircle className="h-4 w-4" />
                           Stäng rum
@@ -314,21 +314,21 @@ export function StaffPage() {
 
                   {/* ── PAUSED ── */}
                   {selectedRoom.status === 'paused' && (
-                    <div className="flex flex-col items-center gap-6 py-8">
-                      <Pause className="h-16 w-16 text-amber-300" />
-                      <p className="text-lg text-gray-500">Rummet är pausat</p>
+                    <div className="flex flex-col items-center gap-4 sm:gap-6 py-6 sm:py-8">
+                      <Pause className="h-12 w-12 sm:h-16 sm:w-16 text-amber-300" />
+                      <p className="text-base sm:text-lg text-gray-500">Rummet är pausat</p>
                       <button
                         onClick={handleTogglePause}
-                        className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-8 py-4 text-lg font-semibold text-white shadow-md transition hover:bg-indigo-700 active:scale-[0.98]"
+                        className="inline-flex w-full sm:w-auto items-center justify-center gap-2 rounded-xl bg-indigo-600 px-8 py-4 text-base sm:text-lg font-semibold text-white shadow-md transition hover:bg-indigo-700 active:scale-[0.98] min-h-[44px]"
                       >
-                        <Play className="h-6 w-6" />
+                        <Play className="h-5 w-5 sm:h-6 sm:w-6" />
                         Återuppta
                       </button>
 
-                      <div className="flex gap-3 pt-2">
+                      <div className="flex w-full sm:w-auto gap-3 pt-2">
                         <button
                           onClick={handleClose}
-                          className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 bg-gray-50 px-4 py-2.5 text-sm font-medium text-gray-600 transition hover:bg-gray-100"
+                          className="inline-flex w-full sm:w-auto items-center justify-center gap-1.5 rounded-lg border border-gray-300 bg-gray-50 px-4 py-2.5 text-sm font-medium text-gray-600 transition hover:bg-gray-100 min-h-[44px]"
                         >
                           <XCircle className="h-4 w-4" />
                           Stäng rum
@@ -340,12 +340,52 @@ export function StaffPage() {
               </div>
             )}
 
-            {/* All rooms overview (mobile: visible, desktop: hidden since sidebar shows queue) */}
-            <div className="rounded-xl border border-gray-200 bg-white shadow-sm lg:hidden">
-              <div className="border-b border-gray-100 px-6 py-4">
-                <h3 className="text-sm font-semibold text-gray-900">Kööversikt</h3>
+            {/* Mobile queue overview + room overview (hidden on desktop where sidebar shows) */}
+            <div className="space-y-4 lg:hidden">
+              {/* Queue list */}
+              <div className="rounded-xl border border-gray-200 bg-white shadow-sm">
+                <div className="border-b border-gray-100 px-4 py-3 sm:px-6 sm:py-4">
+                  <h3 className="flex items-center gap-2 text-sm font-semibold text-gray-900">
+                    <Users className="h-4 w-4 text-indigo-500" />
+                    Väntande patienter
+                    <span className="ml-auto rounded-full bg-indigo-100 px-2 py-0.5 text-xs font-bold text-indigo-700">
+                      {waitingPatients.length}
+                    </span>
+                  </h3>
+                </div>
+                <QueueList patients={waitingPatients} />
               </div>
-              <QueueList patients={waitingPatients} />
+
+              {/* Room overview */}
+              <div className="rounded-xl border border-gray-200 bg-white shadow-sm">
+                <div className="border-b border-gray-100 px-4 py-3 sm:px-6 sm:py-4">
+                  <h3 className="text-sm font-semibold text-gray-900">Alla rum</h3>
+                </div>
+                <ul className="divide-y divide-gray-50">
+                  {rooms.map(room => {
+                    const cfg = STATUS_CONFIG[room.status];
+                    return (
+                      <li
+                        key={room.id}
+                        className="flex items-center justify-between px-4 py-3 sm:px-5 text-sm min-h-[44px]"
+                      >
+                        <div className="flex items-center gap-2">
+                          <span className={`h-2.5 w-2.5 sm:h-2 sm:w-2 rounded-full ${cfg.dot}`} />
+                          <span className="font-medium text-gray-800">{room.name}</span>
+                        </div>
+                        <div className="flex items-center gap-2 text-gray-500">
+                          {room.currentTicketNumber && (
+                            <span className="rounded bg-blue-100 px-1.5 py-0.5 text-xs font-semibold text-blue-700">
+                              #{room.currentTicketNumber}
+                            </span>
+                          )}
+                          <span className={`text-xs ${cfg.text}`}>{cfg.label}</span>
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
             </div>
           </div>
 
@@ -420,9 +460,9 @@ function QueueList({ patients }: { patients: ReturnType<typeof useDemo>['patient
   return (
     <ul className="divide-y divide-gray-50">
       {patients.map((p, i) => (
-        <li key={p.id} className="flex items-center justify-between px-5 py-3">
+        <li key={p.id} className="flex items-center justify-between px-4 py-3 sm:px-5 min-h-[44px]">
           <div className="flex items-center gap-3">
-            <span className="flex h-8 w-8 items-center justify-center rounded-full bg-indigo-100 text-sm font-bold text-indigo-700">
+            <span className="flex h-9 w-9 sm:h-8 sm:w-8 items-center justify-center rounded-full bg-indigo-100 text-sm font-bold text-indigo-700">
               {p.ticketNumber}
             </span>
             <span className="text-sm text-gray-500">Plats {i + 1}</span>

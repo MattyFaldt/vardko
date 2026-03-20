@@ -186,15 +186,15 @@ function KpiCard({
   };
 
   return (
-    <div className="bg-white rounded-xl shadow-sm p-5 flex items-center gap-4">
-      <div className={`shrink-0 w-12 h-12 rounded-lg flex items-center justify-center ${ring[color]}`}>
-        <Icon className="w-6 h-6" />
+    <div className="bg-white rounded-xl shadow-sm p-4 sm:p-5 flex items-center gap-3 sm:gap-4">
+      <div className={`shrink-0 w-10 h-10 sm:w-12 sm:h-12 rounded-lg flex items-center justify-center ${ring[color]}`}>
+        <Icon className="w-5 h-5 sm:w-6 sm:h-6" />
       </div>
-      <div>
-        <p className="text-sm text-gray-500 font-medium">{label}</p>
-        <p className={`text-2xl font-bold ${valColor[color]}`}>
+      <div className="min-w-0">
+        <p className="text-xs sm:text-sm text-gray-500 font-medium truncate">{label}</p>
+        <p className={`text-xl sm:text-2xl font-bold ${valColor[color]}`}>
           {value}
-          {suffix && <span className="text-base font-medium ml-1">{suffix}</span>}
+          {suffix && <span className="text-sm sm:text-base font-medium ml-1">{suffix}</span>}
         </p>
       </div>
     </div>
@@ -203,9 +203,9 @@ function KpiCard({
 
 function ChartCard({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="bg-white rounded-xl shadow-sm p-5">
+    <div className="bg-white rounded-xl shadow-sm p-4 sm:p-5">
       <h3 className="text-sm font-semibold text-gray-700 mb-4">{title}</h3>
-      <div className="h-64">{children}</div>
+      <div className="h-48 sm:h-64 min-h-[12rem]">{children}</div>
     </div>
   );
 }
@@ -255,11 +255,11 @@ function DashboardSection() {
   const alertIcons = { warning: AlertTriangle, info: Activity, error: XCircle };
 
   return (
-    <div className="space-y-6">
-      <h2 className="text-xl font-bold text-gray-900">Instrumentpanel</h2>
+    <div className="space-y-4 sm:space-y-6">
+      <h2 className="text-lg sm:text-xl font-bold text-gray-900">Instrumentpanel</h2>
 
       {/* KPI cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 sm:gap-4">
         <KpiCard label="I kön" value={stats.waitingCount} icon={Users} color="blue" />
         <KpiCard label="Aktiva rum" value={`${stats.activeRooms}/${rooms.length}`} icon={DoorOpen} color="green" />
         <KpiCard label="Snitt väntetid" value={stats.avgWaitMinutes} suffix="min" icon={Clock} color="amber" />
@@ -267,7 +267,7 @@ function DashboardSection() {
       </div>
 
       {/* Charts */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-4">
         <ChartCard title="Patientflöde idag (per timme)">
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={patientFlowData}>
@@ -300,7 +300,7 @@ function DashboardSection() {
           {alerts.map((alert, i) => {
             const AlertIcon = alertIcons[alert.severity];
             return (
-              <div key={i} className={`flex items-start gap-3 px-4 py-3 rounded-xl border ${alertStyles[alert.severity]}`}>
+              <div key={i} className={`flex items-start gap-3 px-3 sm:px-4 py-3 rounded-xl border ${alertStyles[alert.severity]}`}>
                 <AlertIcon className="w-5 h-5 shrink-0 mt-0.5" />
                 <p className="text-sm leading-relaxed">{alert.message}</p>
               </div>
@@ -343,16 +343,16 @@ function QueueSection() {
   }
 
   return (
-    <div className="space-y-6">
-      <h2 className="text-xl font-bold text-gray-900">Kö</h2>
+    <div className="space-y-4 sm:space-y-6">
+      <h2 className="text-lg sm:text-xl font-bold text-gray-900">Kö</h2>
 
       {/* Filter tabs */}
-      <div className="flex gap-1 bg-white rounded-lg p-1 shadow-sm w-fit">
+      <div className="flex flex-wrap gap-1 bg-white rounded-lg p-1 shadow-sm">
         {filters.map(f => (
           <button
             key={f.key}
             onClick={() => setStatusFilter(f.key)}
-            className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+            className={`px-3 sm:px-4 py-2 rounded-md text-sm font-medium transition-colors min-h-[44px] sm:min-h-0 ${
               statusFilter === f.key
                 ? 'bg-blue-600 text-white'
                 : 'text-gray-600 hover:bg-gray-100'
@@ -363,8 +363,41 @@ function QueueSection() {
         ))}
       </div>
 
-      {/* Table */}
-      <div className="bg-white rounded-xl shadow-sm overflow-hidden">
+      {/* Mobile card view */}
+      <div className="lg:hidden space-y-3">
+        {filtered.map(p => (
+          <div key={p.id} className="bg-white rounded-xl shadow-sm p-4">
+            <div className="flex items-center justify-between mb-3">
+              <span className="font-mono font-bold text-gray-900 text-base">#{p.ticketNumber}</span>
+              <Badge className={PATIENT_STATUS_BADGE[p.status] || 'bg-gray-100 text-gray-600'}>
+                {PATIENT_STATUS_LABELS[p.status] || p.status}
+              </Badge>
+            </div>
+            <div className="grid grid-cols-2 gap-2 text-sm">
+              <div>
+                <span className="text-gray-500">Position</span>
+                <p className="font-medium text-gray-900">{p.status === 'waiting' ? p.position : '—'}</p>
+              </div>
+              <div>
+                <span className="text-gray-500">Väntetid</span>
+                <p className="font-medium text-gray-900">{formatWait(p.joinedAt)}</p>
+              </div>
+              <div className="col-span-2">
+                <span className="text-gray-500">Rum</span>
+                <p className="font-medium text-gray-900">{getRoomName(p.assignedRoomId)}</p>
+              </div>
+            </div>
+          </div>
+        ))}
+        {filtered.length === 0 && (
+          <div className="bg-white rounded-xl shadow-sm p-8 text-center text-gray-400">
+            Inga patienter att visa
+          </div>
+        )}
+      </div>
+
+      {/* Desktop table */}
+      <div className="hidden lg:block bg-white rounded-xl shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-sm text-left">
             <thead>
@@ -444,41 +477,122 @@ function RoomsSection() {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h2 className="text-xl font-bold text-gray-900">Rum</h2>
+    <div className="space-y-4 sm:space-y-6">
+      <div className="flex items-center justify-between gap-3">
+        <h2 className="text-lg sm:text-xl font-bold text-gray-900">Rum</h2>
         <button
           onClick={() => setShowAddForm(true)}
-          className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 transition-colors"
+          className="inline-flex items-center gap-2 px-3 sm:px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 transition-colors min-h-[44px]"
         >
           <Plus className="w-4 h-4" />
-          Lägg till rum
+          <span className="hidden sm:inline">Lägg till rum</span>
+          <span className="sm:hidden">Nytt rum</span>
         </button>
       </div>
 
       {/* Inline add form */}
       {showAddForm && (
-        <div className="bg-white rounded-xl shadow-sm p-4 flex items-center gap-3">
+        <div className="bg-white rounded-xl shadow-sm p-4 flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
           <input
             type="text"
             value={newRoomName}
             onChange={e => setNewRoomName(e.target.value)}
             onKeyDown={e => e.key === 'Enter' && handleAdd()}
             placeholder="Rumsnamn..."
-            className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 min-h-[44px]"
             autoFocus
           />
-          <button onClick={handleAdd} className="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 transition-colors">
-            Spara
-          </button>
-          <button onClick={() => { setShowAddForm(false); setNewRoomName(''); }} className="px-4 py-2 rounded-lg bg-gray-100 text-gray-600 text-sm font-medium hover:bg-gray-200 transition-colors">
-            Avbryt
-          </button>
+          <div className="flex gap-2">
+            <button onClick={handleAdd} className="flex-1 sm:flex-none px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 transition-colors min-h-[44px]">
+              Spara
+            </button>
+            <button onClick={() => { setShowAddForm(false); setNewRoomName(''); }} className="flex-1 sm:flex-none px-4 py-2 rounded-lg bg-gray-100 text-gray-600 text-sm font-medium hover:bg-gray-200 transition-colors min-h-[44px]">
+              Avbryt
+            </button>
+          </div>
         </div>
       )}
 
-      {/* Table */}
-      <div className="bg-white rounded-xl shadow-sm overflow-hidden">
+      {/* Mobile card view */}
+      <div className="lg:hidden space-y-3">
+        {rooms.map(room => (
+          <div key={room.id} className="bg-white rounded-xl shadow-sm p-4">
+            {/* Room name + status */}
+            <div className="flex items-center justify-between mb-3">
+              {editingId === room.id ? (
+                <div className="flex items-center gap-2 flex-1 mr-2">
+                  <input
+                    type="text"
+                    value={editName}
+                    onChange={e => setEditName(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter') saveEdit(room.id); if (e.key === 'Escape') setEditingId(null); }}
+                    className="flex-1 px-2 py-1 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    autoFocus
+                  />
+                  <button onClick={() => saveEdit(room.id)} className="p-2 text-green-600 hover:text-green-700 min-w-[44px] min-h-[44px] flex items-center justify-center"><Check className="w-4 h-4" /></button>
+                  <button onClick={() => setEditingId(null)} className="p-2 text-gray-400 hover:text-gray-600 min-w-[44px] min-h-[44px] flex items-center justify-center"><X className="w-4 h-4" /></button>
+                </div>
+              ) : (
+                <span className="font-medium text-gray-900">{room.name}</span>
+              )}
+              <Badge className={STATUS_BADGE[room.status] || 'bg-gray-100 text-gray-600'}>{STATUS_LABELS[room.status] || room.status}</Badge>
+            </div>
+
+            {/* Staff dropdown */}
+            <div className="mb-3">
+              <label className="text-xs text-gray-500 mb-1 block">Personal</label>
+              <select
+                value={staff.find(s => s.assignedRoomId === room.id)?.id || ''}
+                onChange={e => assignStaffToRoom(room.id, e.target.value || null)}
+                className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 min-h-[44px]"
+              >
+                <option value="">— Ingen —</option>
+                {staff.filter(s => s.isActive && s.role === 'staff').map(s => (
+                  <option key={s.id} value={s.id} disabled={s.assignedRoomId !== null && s.assignedRoomId !== room.id}>
+                    {s.displayName}{s.assignedRoomId && s.assignedRoomId !== room.id ? ' (tilldelad)' : ''}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Patient + active toggle + actions row */}
+            <div className="flex items-center justify-between">
+              <div className="text-sm">
+                <span className="text-gray-500 mr-1">Patient:</span>
+                {room.currentTicketNumber ? <span className="font-mono font-medium">#{room.currentTicketNumber}</span> : <span className="text-gray-400">—</span>}
+              </div>
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => updateRoom(room.id, { isActive: !room.isActive })}
+                  className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors ${
+                    room.isActive ? 'bg-blue-600' : 'bg-gray-200'
+                  }`}
+                >
+                  <span className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${
+                    room.isActive ? 'translate-x-5' : 'translate-x-0'
+                  }`} />
+                </button>
+                <button onClick={() => startEdit(room.id, room.name)} className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors min-w-[44px] min-h-[44px] flex items-center justify-center">
+                  <Pencil className="w-4 h-4" />
+                </button>
+                {confirmDeleteId === room.id ? (
+                  <div className="flex items-center gap-1">
+                    <button onClick={() => handleDelete(room.id)} className="px-2 py-1 text-xs bg-red-600 text-white rounded hover:bg-red-700 min-h-[44px]">Ta bort</button>
+                    <button onClick={() => setConfirmDeleteId(null)} className="px-2 py-1 text-xs bg-gray-100 text-gray-600 rounded hover:bg-gray-200 min-h-[44px]">Avbryt</button>
+                  </div>
+                ) : (
+                  <button onClick={() => setConfirmDeleteId(room.id)} className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors min-w-[44px] min-h-[44px] flex items-center justify-center">
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Desktop table */}
+      <div className="hidden lg:block bg-white rounded-xl shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-sm text-left">
             <thead>
@@ -616,27 +730,28 @@ function StaffSection() {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h2 className="text-xl font-bold text-gray-900">Personal</h2>
+    <div className="space-y-4 sm:space-y-6">
+      <div className="flex items-center justify-between gap-3">
+        <h2 className="text-lg sm:text-xl font-bold text-gray-900">Personal</h2>
         <button
           onClick={() => setShowAddForm(true)}
-          className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 transition-colors"
+          className="inline-flex items-center gap-2 px-3 sm:px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 transition-colors min-h-[44px]"
         >
           <Plus className="w-4 h-4" />
-          Lägg till personal
+          <span className="hidden sm:inline">Lägg till personal</span>
+          <span className="sm:hidden">Ny</span>
         </button>
       </div>
 
       {/* Inline add form */}
       {showAddForm && (
-        <div className="bg-white rounded-xl shadow-sm p-4 flex flex-wrap items-center gap-3">
+        <div className="bg-white rounded-xl shadow-sm p-4 flex flex-col sm:flex-row flex-wrap items-stretch sm:items-center gap-3">
           <input
             type="text"
             value={newName}
             onChange={e => setNewName(e.target.value)}
             placeholder="Namn..."
-            className="flex-1 min-w-[160px] px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            className="flex-1 min-w-0 sm:min-w-[160px] px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 min-h-[44px]"
             autoFocus
           />
           <input
@@ -644,27 +759,105 @@ function StaffSection() {
             value={newEmail}
             onChange={e => setNewEmail(e.target.value)}
             placeholder="E-post..."
-            className="flex-1 min-w-[200px] px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            className="flex-1 min-w-0 sm:min-w-[200px] px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 min-h-[44px]"
           />
           <select
             value={newRole}
             onChange={e => setNewRole(e.target.value as 'clinic_admin' | 'staff')}
-            className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white"
+            className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white min-h-[44px]"
           >
             <option value="staff">Personal</option>
             <option value="clinic_admin">Klinikadmin</option>
           </select>
-          <button onClick={handleAdd} className="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 transition-colors">
-            Spara
-          </button>
-          <button onClick={() => { setShowAddForm(false); setNewName(''); setNewEmail(''); }} className="px-4 py-2 rounded-lg bg-gray-100 text-gray-600 text-sm font-medium hover:bg-gray-200 transition-colors">
-            Avbryt
-          </button>
+          <div className="flex gap-2">
+            <button onClick={handleAdd} className="flex-1 sm:flex-none px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 transition-colors min-h-[44px]">
+              Spara
+            </button>
+            <button onClick={() => { setShowAddForm(false); setNewName(''); setNewEmail(''); }} className="flex-1 sm:flex-none px-4 py-2 rounded-lg bg-gray-100 text-gray-600 text-sm font-medium hover:bg-gray-200 transition-colors min-h-[44px]">
+              Avbryt
+            </button>
+          </div>
         </div>
       )}
 
-      {/* Table */}
-      <div className="bg-white rounded-xl shadow-sm overflow-hidden">
+      {/* Mobile card view */}
+      <div className="lg:hidden space-y-3">
+        {staff.map(member => (
+          <div key={member.id} className="bg-white rounded-xl shadow-sm p-4">
+            {editingId === member.id ? (
+              <div className="space-y-3">
+                <input
+                  type="text"
+                  value={editName}
+                  onChange={e => setEditName(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[44px]"
+                  placeholder="Namn..."
+                />
+                <input
+                  type="email"
+                  value={editEmail}
+                  onChange={e => setEditEmail(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[44px]"
+                  placeholder="E-post..."
+                />
+                <select
+                  value={editRole}
+                  onChange={e => setEditRole(e.target.value as 'clinic_admin' | 'staff')}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[44px]"
+                >
+                  <option value="staff">Personal</option>
+                  <option value="clinic_admin">Klinikadmin</option>
+                </select>
+                <div className="flex gap-2">
+                  <button onClick={() => saveEdit(member.id)} className="flex-1 px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 min-h-[44px]">Spara</button>
+                  <button onClick={() => setEditingId(null)} className="flex-1 px-4 py-2 rounded-lg bg-gray-100 text-gray-600 text-sm font-medium hover:bg-gray-200 min-h-[44px]">Avbryt</button>
+                </div>
+              </div>
+            ) : (
+              <>
+                <div className="flex items-start justify-between mb-2">
+                  <div className="min-w-0">
+                    <p className="font-medium text-gray-900 truncate">{member.displayName}</p>
+                    <p className="text-sm text-gray-500 truncate">{member.email}</p>
+                  </div>
+                  <Badge className={member.role === 'clinic_admin' ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'}>
+                    {member.role === 'clinic_admin' ? 'Klinikadmin' : 'Personal'}
+                  </Badge>
+                </div>
+                <div className="flex items-center justify-between mt-3 pt-3 border-t border-gray-100">
+                  <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-gray-500">Aktiv</span>
+                      <button
+                        onClick={() => updateStaffMember(member.id, { isActive: !member.isActive })}
+                        className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors ${
+                          member.isActive ? 'bg-blue-600' : 'bg-gray-200'
+                        }`}
+                      >
+                        <span className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${
+                          member.isActive ? 'translate-x-5' : 'translate-x-0'
+                        }`} />
+                      </button>
+                    </div>
+                    <span className="text-xs text-gray-500">Rum: {getRoomName(member.assignedRoomId)}</span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <button onClick={() => startEdit(member)} className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors min-w-[44px] min-h-[44px] flex items-center justify-center">
+                      <Pencil className="w-4 h-4" />
+                    </button>
+                    <button onClick={() => removeStaffMember(member.id)} className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors min-w-[44px] min-h-[44px] flex items-center justify-center">
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+        ))}
+      </div>
+
+      {/* Desktop table */}
+      <div className="hidden lg:block bg-white rounded-xl shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-sm text-left">
             <thead>
@@ -802,14 +995,14 @@ function SettingsSection() {
   ];
 
   return (
-    <div className="space-y-6">
-      <h2 className="text-xl font-bold text-gray-900">Inställningar</h2>
+    <div className="space-y-4 sm:space-y-6">
+      <h2 className="text-lg sm:text-xl font-bold text-gray-900">Inställningar</h2>
       <div className="bg-white rounded-xl shadow-sm divide-y divide-gray-100">
         {settings.map((s, i) => (
-          <div key={i} className="flex items-center justify-between px-6 py-4">
-            <div>
+          <div key={i} className="flex items-center justify-between gap-4 px-4 sm:px-6 py-4">
+            <div className="min-w-0">
               <p className="text-sm font-medium text-gray-900">{s.label}</p>
-              <p className="text-sm text-gray-500">{s.description}</p>
+              <p className="text-xs sm:text-sm text-gray-500">{s.description}</p>
             </div>
             <Toggle checked={s.checked} onChange={s.onChange} />
           </div>
@@ -829,35 +1022,36 @@ function ClinicsSection() {
   const totalPatients = MOCK_CLINICS.reduce((s, c) => s + c.patientsToday, 0);
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h2 className="text-xl font-bold text-gray-900">Kliniker</h2>
-        <button className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 transition-colors">
+    <div className="space-y-4 sm:space-y-6">
+      <div className="flex items-center justify-between gap-3">
+        <h2 className="text-lg sm:text-xl font-bold text-gray-900">Kliniker</h2>
+        <button className="inline-flex items-center gap-2 px-3 sm:px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 transition-colors min-h-[44px]">
           <Plus className="w-4 h-4" />
-          Lägg till klinik
+          <span className="hidden sm:inline">Lägg till klinik</span>
+          <span className="sm:hidden">Ny</span>
         </button>
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
         <KpiCard label="Totalt kliniker" value={totalClinics} icon={Building2} color="blue" />
         <KpiCard label="Total personal" value={totalStaff} icon={UserPlus} color="green" />
         <KpiCard label="Patienter idag" value={totalPatients} icon={Activity} color="purple" />
       </div>
 
       {/* Clinic cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 sm:gap-5">
         {MOCK_CLINICS.map(clinic => {
           const isActive = clinic.status === 'active';
           return (
-            <div key={clinic.slug} className="bg-white rounded-xl shadow-sm p-6 hover:shadow-md transition-shadow">
-              <div className="flex items-start justify-between mb-4">
-                <div className="flex items-center gap-3">
+            <div key={clinic.slug} className="bg-white rounded-xl shadow-sm p-4 sm:p-6 hover:shadow-md transition-shadow">
+              <div className="flex items-start justify-between mb-4 gap-2">
+                <div className="flex items-center gap-3 min-w-0">
                   <div className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ${isActive ? 'bg-blue-50 text-blue-600' : 'bg-gray-100 text-gray-400'}`}>
                     <Building2 className="w-5 h-5" />
                   </div>
-                  <div>
-                    <h3 className="font-semibold text-gray-900">{clinic.name}</h3>
+                  <div className="min-w-0">
+                    <h3 className="font-semibold text-gray-900 truncate">{clinic.name}</h3>
                     <p className="text-xs text-gray-400 mt-0.5">{clinic.slug}</p>
                   </div>
                 </div>
@@ -865,17 +1059,17 @@ function ClinicsSection() {
                   {isActive ? 'Aktiv' : 'Konfigurering'}
                 </Badge>
               </div>
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-3 gap-2 sm:gap-3">
                 {[
                   { icon: DoorOpen, value: clinic.rooms, label: 'Rum' },
                   { icon: Users, value: clinic.staff, label: 'Personal' },
                   { icon: Activity, value: clinic.patientsToday, label: 'Patienter' },
                 ].map((stat, i) => (
-                  <div key={i} className="bg-gray-50 rounded-lg p-3 text-center">
+                  <div key={i} className="bg-gray-50 rounded-lg p-2 sm:p-3 text-center">
                     <div className="flex items-center justify-center text-gray-400 mb-1">
                       <stat.icon className="w-3.5 h-3.5" />
                     </div>
-                    <p className="text-lg font-bold text-gray-800">{stat.value}</p>
+                    <p className="text-base sm:text-lg font-bold text-gray-800">{stat.value}</p>
                     <p className="text-xs text-gray-500">{stat.label}</p>
                   </div>
                 ))}
@@ -901,15 +1095,15 @@ function SystemSection() {
   ];
 
   return (
-    <div className="space-y-6">
-      <h2 className="text-xl font-bold text-gray-900">Systemadministration</h2>
+    <div className="space-y-4 sm:space-y-6">
+      <h2 className="text-lg sm:text-xl font-bold text-gray-900">Systemadministration</h2>
 
       {/* System health */}
       <div>
         <h3 className="text-sm font-semibold text-gray-700 mb-3">Systemhälsa</h3>
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 sm:gap-4">
           {systemHealth.map((item, i) => (
-            <div key={i} className="bg-white rounded-xl shadow-sm p-5">
+            <div key={i} className="bg-white rounded-xl shadow-sm p-4 sm:p-5">
               <div className="flex items-center gap-3 mb-2">
                 <item.icon className="w-5 h-5 text-gray-400" />
                 <span className="text-sm font-medium text-gray-900">{item.label}</span>
@@ -921,8 +1115,39 @@ function SystemSection() {
         </div>
       </div>
 
-      {/* Organizations table */}
-      <div>
+      {/* Mobile card view for organizations */}
+      <div className="lg:hidden">
+        <h3 className="text-sm font-semibold text-gray-700 mb-3">Organisationer</h3>
+        <div className="space-y-3">
+          {MOCK_ORGS.map((org, i) => (
+            <div key={i} className="bg-white rounded-xl shadow-sm p-4">
+              <div className="flex items-start justify-between mb-3 gap-2">
+                <h4 className="font-medium text-gray-900">{org.name}</h4>
+                <Badge className={org.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}>
+                  {org.status === 'active' ? 'Aktiv' : 'Testperiod'}
+                </Badge>
+              </div>
+              <div className="grid grid-cols-3 gap-2 text-sm">
+                <div>
+                  <span className="text-gray-500 text-xs">Kliniker</span>
+                  <p className="font-medium text-gray-900">{org.clinics}</p>
+                </div>
+                <div>
+                  <span className="text-gray-500 text-xs">Användare</span>
+                  <p className="font-medium text-gray-900">{org.users}</p>
+                </div>
+                <div>
+                  <span className="text-gray-500 text-xs">Plan</span>
+                  <p><Badge className="bg-gray-100 text-gray-700">{org.plan}</Badge></p>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Desktop organizations table */}
+      <div className="hidden lg:block">
         <h3 className="text-sm font-semibold text-gray-700 mb-3">Organisationer</h3>
         <div className="bg-white rounded-xl shadow-sm overflow-hidden">
           <div className="overflow-x-auto">
@@ -1028,7 +1253,7 @@ export function AdminPage() {
               <button
                 key={item.id}
                 onClick={() => handleNavClick(item.id)}
-                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors min-h-[44px] ${
                   isActive
                     ? 'bg-blue-50 text-blue-700'
                     : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
@@ -1052,7 +1277,7 @@ export function AdminPage() {
           )}
           <button
             onClick={() => { logout(); navigate('/login', { replace: true }); }}
-            className="w-full flex items-center gap-2 px-3 py-2.5 rounded-lg text-sm font-medium text-red-600 hover:bg-red-50 transition-colors"
+            className="w-full flex items-center gap-2 px-3 py-2.5 rounded-lg text-sm font-medium text-red-600 hover:bg-red-50 transition-colors min-h-[44px]"
           >
             <LogOut className="w-4 h-4" />
             Logga ut
@@ -1064,7 +1289,7 @@ export function AdminPage() {
             <div className="relative">
               <button
                 onClick={() => setRoleDropdownOpen(!roleDropdownOpen)}
-                className="w-full flex items-center justify-between px-3 py-2 bg-gray-50 rounded-lg text-xs text-gray-600 hover:bg-gray-100 transition-colors"
+                className="w-full flex items-center justify-between px-3 py-2 bg-gray-50 rounded-lg text-xs text-gray-600 hover:bg-gray-100 transition-colors min-h-[44px]"
               >
                 <span>{ROLE_LABELS[effectiveRole]}</span>
                 <ChevronDown className={`w-3.5 h-3.5 text-gray-400 transition-transform ${roleDropdownOpen ? 'rotate-180' : ''}`} />
@@ -1075,7 +1300,7 @@ export function AdminPage() {
                     <button
                       key={role}
                       onClick={() => { setCurrentUserRole(role); setRoleDropdownOpen(false); }}
-                      className={`w-full text-left px-3 py-1.5 text-xs transition-colors ${
+                      className={`w-full text-left px-3 py-2 text-xs transition-colors min-h-[44px] ${
                         effectiveRole === role ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-700 hover:bg-gray-50'
                       }`}
                     >
@@ -1099,7 +1324,7 @@ export function AdminPage() {
           <div className="flex items-center gap-3">
             <button
               onClick={() => setSidebarOpen(!sidebarOpen)}
-              className="p-2 -ml-2 text-gray-600 hover:bg-gray-100 rounded-lg"
+              className="p-2 -ml-2 text-gray-600 hover:bg-gray-100 rounded-lg min-w-[44px] min-h-[44px] flex items-center justify-center"
             >
               <Menu className="w-5 h-5" />
             </button>
@@ -1132,7 +1357,7 @@ export function AdminPage() {
 
         {/* Main content */}
         <main className="flex-1 lg:ml-64 min-h-screen">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+          <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-6">
             {renderContent()}
           </div>
         </main>
