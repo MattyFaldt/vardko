@@ -1,0 +1,88 @@
+{
+  "queue": {
+    "yourPosition": "Your position in queue: {{position}}",
+    "estimatedWait": "Estimated wait: {{minutes}} minutes",
+    "yourTurn": "Your turn! Go to {{roomName}}",
+    "joinSuccess": "You have been added to the queue",
+    "queueFull": "The queue is full right now",
+    "postponed": "You have been moved {{positions}} positions back",
+    "cancelled": "You have left the queue",
+    "noShow": "You were not called. Please contact reception.",
+    "closed": "The queue is closed",
+    "alreadyInQueue": "You are already in the queue",
+    "ticketExpired": "Your queue ticket has expired"
+  },
+  "staff": {
+    "ready": "Ready for next patient",
+    "patientAssigned": "Patient {{ticketNumber}} assigned to room {{roomName}}",
+    "completed": "Patient completed",
+    "noShow": "Patient did not show up",
+    "paused": "Room paused",
+    "resumed": "Room resumed",
+    "roomOpened": "Room opened",
+    "roomClosed": "Room closed"
+  },
+  "auth": {
+    "loginTitle": "Log in",
+    "email": "Email",
+    "password": "Password",
+    "loginButton": "Log in",
+    "invalidCredentials": "Invalid credentials",
+    "accountLocked": "Account locked. Try again in {{minutes}} minutes.",
+    "logout": "Log out"
+  },
+  "errors": {
+    "unauthorized": "Unauthorized",
+    "forbidden": "Access denied",
+    "notFound": "Not found",
+    "rateLimited": "Too many requests. Please try again later.",
+    "serverError": "Server error. Please try again.",
+    "invalidInput": "Invalid input"
+  },
+  "common": {
+    "loading": "Loading...",
+    "save": "Save",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "edit": "Edit",
+    "close": "Close",
+    "confirm": "Confirm",
+    "back": "Back",
+    "next": "Next",
+    "yes": "Yes",
+    "no": "No"
+  },
+  "patient": {
+    "enterPersonnummer": "Enter your personal identity number",
+    "personnummerFormat": "Format: YYYYMMDD-XXXX",
+    "joinQueue": "Join queue",
+    "leaveQueue": "Leave queue",
+    "postpone": "Move me back",
+    "waitingRoom": "Waiting room",
+    "positionsBack": "Positions back"
+  },
+  "display": {
+    "nowServing": "Now serving",
+    "nextInLine": "Next in line",
+    "waitingCount": "{{count}} waiting",
+    "room": "Room",
+    "noOneWaiting": "No one is currently waiting"
+  },
+  "admin": {
+    "dashboard": "Dashboard",
+    "rooms": "Rooms",
+    "staff": "Staff",
+    "analytics": "Analytics",
+    "settings": "Settings",
+    "auditLog": "Audit log",
+    "addRoom": "Add room",
+    "addStaff": "Add staff",
+    "queueOverview": "Queue overview",
+    "alerts": {
+      "longQueue": "Queue is longer than usual for this time — consider opening another room",
+      "longWait": "Average wait time exceeds {{minutes}} minutes",
+      "roomPaused": "Room {{roomName}} has been paused for more than {{minutes}} minutes",
+      "highNoShow": "Patient no-show rate today is above average"
+    }
+  }
+}

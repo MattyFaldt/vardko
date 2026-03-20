@@ -1,0 +1,88 @@
+{
+  "queue": {
+    "yourPosition": "Din plats i kön: {{position}}",
+    "estimatedWait": "Beräknad väntetid: {{minutes}} minuter",
+    "yourTurn": "Din tur! Gå till {{roomName}}",
+    "joinSuccess": "Du är tillagd i kön",
+    "queueFull": "Kön är full just nu",
+    "postponed": "Du har flyttats {{positions}} platser bakåt",
+    "cancelled": "Du har lämnat kön",
+    "noShow": "Du blev inte uppropad. Kontakta receptionen.",
+    "closed": "Kön är stängd",
+    "alreadyInQueue": "Du står redan i kön",
+    "ticketExpired": "Din köbiljett har gått ut"
+  },
+  "staff": {
+    "ready": "Redo för nästa patient",
+    "patientAssigned": "Patient {{ticketNumber}} tilldelad rum {{roomName}}",
+    "completed": "Patienten är klar",
+    "noShow": "Patienten kom inte",
+    "paused": "Rum pausat",
+    "resumed": "Rum återupptaget",
+    "roomOpened": "Rum öppnat",
+    "roomClosed": "Rum stängt"
+  },
+  "auth": {
+    "loginTitle": "Logga in",
+    "email": "E-post",
+    "password": "Lösenord",
+    "loginButton": "Logga in",
+    "invalidCredentials": "Felaktiga inloggningsuppgifter",
+    "accountLocked": "Kontot är låst. Försök igen om {{minutes}} minuter.",
+    "logout": "Logga ut"
+  },
+  "errors": {
+    "unauthorized": "Ej behörig",
+    "forbidden": "Åtkomst nekad",
+    "notFound": "Hittades inte",
+    "rateLimited": "För många förfrågningar. Försök igen senare.",
+    "serverError": "Serverfel. Försök igen.",
+    "invalidInput": "Ogiltig indata"
+  },
+  "common": {
+    "loading": "Laddar...",
+    "save": "Spara",
+    "cancel": "Avbryt",
+    "delete": "Ta bort",
+    "edit": "Redigera",
+    "close": "Stäng",
+    "confirm": "Bekräfta",
+    "back": "Tillbaka",
+    "next": "Nästa",
+    "yes": "Ja",
+    "no": "Nej"
+  },
+  "patient": {
+    "enterPersonnummer": "Ange ditt personnummer",
+    "personnummerFormat": "Format: ÅÅÅÅMMDD-XXXX",
+    "joinQueue": "Ställ dig i kön",
+    "leaveQueue": "Lämna kön",
+    "postpone": "Flytta mig bakåt",
+    "waitingRoom": "Väntrummet",
+    "positionsBack": "Antal platser bakåt"
+  },
+  "display": {
+    "nowServing": "Nu betjänas",
+    "nextInLine": "Nästa i kön",
+    "waitingCount": "{{count}} väntar",
+    "room": "Rum",
+    "noOneWaiting": "Ingen väntar just nu"
+  },
+  "admin": {
+    "dashboard": "Instrumentpanel",
+    "rooms": "Rum",
+    "staff": "Personal",
+    "analytics": "Analys",
+    "settings": "Inställningar",
+    "auditLog": "Revisionslogg",
+    "addRoom": "Lägg till rum",
+    "addStaff": "Lägg till personal",
+    "queueOverview": "Kööversikt",
+    "alerts": {
+      "longQueue": "Kön är längre än vanligt för den här tiden — överväg att öppna ett till rum",
+      "longWait": "Genomsnittlig väntetid överstiger {{minutes}} minuter",
+      "roomPaused": "Rum {{roomName}} har varit pausat i mer än {{minutes}} minuter",
+      "highNoShow": "Andelen uteblivna patienter idag är över genomsnittet"
+    }
+  }
+}
