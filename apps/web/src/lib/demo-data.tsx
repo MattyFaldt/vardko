@@ -17,6 +17,16 @@ export interface DemoRoom {
   status: 'open' | 'occupied' | 'paused' | 'closed';
   staffName: string | null;
   currentTicketNumber: number | null;
+  isActive: boolean;
+}
+
+export interface DemoStaffMember {
+  id: string;
+  displayName: string;
+  email: string;
+  role: 'clinic_admin' | 'staff';
+  isActive: boolean;
+  assignedRoomId: string | null;
 }
 
 export interface DemoStats {
@@ -29,13 +39,19 @@ export interface DemoStats {
   avgServiceTimeMinutes: number;
 }
 
+export type UserRole = 'superadmin' | 'org_admin' | 'clinic_admin' | 'staff';
+
 interface DemoContextValue {
   patients: DemoPatient[];
   rooms: DemoRoom[];
+  staff: DemoStaffMember[];
   stats: DemoStats;
   clinicName: string;
   clinicSlug: string;
+  currentUserRole: UserRole;
+  setCurrentUserRole: (role: UserRole) => void;
   calledTickets: Array<{ ticketNumber: number; roomName: string }>;
+  // Queue operations
   joinQueue: () => DemoPatient;
   callNextPatient: (roomId: string) => DemoPatient | null;
   completePatient: (roomId: string) => void;
@@ -43,16 +59,32 @@ interface DemoContextValue {
   toggleRoomPause: (roomId: string) => void;
   openRoom: (roomId: string) => void;
   closeRoom: (roomId: string) => void;
+  // Room management
+  addRoom: (name: string) => void;
+  updateRoom: (id: string, updates: { name?: string; isActive?: boolean }) => void;
+  removeRoom: (id: string) => void;
+  // Staff management
+  addStaffMember: (member: { displayName: string; email: string; role: 'clinic_admin' | 'staff' }) => void;
+  updateStaffMember: (id: string, updates: Partial<Pick<DemoStaffMember, 'displayName' | 'email' | 'role' | 'isActive'>>) => void;
+  removeStaffMember: (id: string) => void;
 }
 
 const DemoContext = createContext<DemoContextValue | null>(null);
 
 const INITIAL_ROOMS: DemoRoom[] = [
-  { id: 'r1', name: 'Rum 1', status: 'occupied', staffName: 'Erik Eriksson', currentTicketNumber: 3 },
-  { id: 'r2', name: 'Rum 2', status: 'occupied', staffName: 'Maria Johansson', currentTicketNumber: 5 },
-  { id: 'r3', name: 'Rum 3', status: 'open', staffName: 'Anna Lindberg', currentTicketNumber: null },
-  { id: 'r4', name: 'Rum 4', status: 'paused', staffName: 'Karl Svensson', currentTicketNumber: null },
-  { id: 'r5', name: 'Rum 5', status: 'closed', staffName: null, currentTicketNumber: null },
+  { id: 'r1', name: 'Rum 1', status: 'occupied', staffName: 'Erik Eriksson', currentTicketNumber: 3, isActive: true },
+  { id: 'r2', name: 'Rum 2', status: 'occupied', staffName: 'Maria Johansson', currentTicketNumber: 5, isActive: true },
+  { id: 'r3', name: 'Rum 3', status: 'open', staffName: 'Anna Lindberg', currentTicketNumber: null, isActive: true },
+  { id: 'r4', name: 'Rum 4', status: 'paused', staffName: 'Karl Svensson', currentTicketNumber: null, isActive: true },
+  { id: 'r5', name: 'Rum 5', status: 'closed', staffName: null, currentTicketNumber: null, isActive: true },
+];
+
+const INITIAL_STAFF: DemoStaffMember[] = [
+  { id: 's1', displayName: 'Anna Adminsson', email: 'anna@kungsholmen.se', role: 'clinic_admin', isActive: true, assignedRoomId: null },
+  { id: 's2', displayName: 'Erik Eriksson', email: 'erik@kungsholmen.se', role: 'staff', isActive: true, assignedRoomId: 'r1' },
+  { id: 's3', displayName: 'Maria Johansson', email: 'maria@kungsholmen.se', role: 'staff', isActive: true, assignedRoomId: 'r2' },
+  { id: 's4', displayName: 'Anna Lindberg', email: 'anna.l@kungsholmen.se', role: 'staff', isActive: true, assignedRoomId: 'r3' },
+  { id: 's5', displayName: 'Karl Svensson', email: 'karl@kungsholmen.se', role: 'staff', isActive: true, assignedRoomId: 'r4' },
 ];
 
 function makeInitialPatients(): DemoPatient[] {
@@ -71,12 +103,16 @@ function makeInitialPatients(): DemoPatient[] {
   ];
 }
 
+let nextRoomId = 6;
+let nextStaffId = 6;
+
 export function DemoProvider({ children }: { children: ReactNode }) {
   const [patients, setPatients] = useState<DemoPatient[]>(makeInitialPatients);
   const [rooms, setRooms] = useState<DemoRoom[]>(INITIAL_ROOMS);
+  const [staff, setStaff] = useState<DemoStaffMember[]>(INITIAL_STAFF);
   const [nextTicket, setNextTicket] = useState(11);
+  const [currentUserRole, setCurrentUserRole] = useState<UserRole>('clinic_admin');
 
-  // Recalculate waiting times periodically
   useEffect(() => {
     const interval = setInterval(() => {
       setPatients(prev => {
@@ -84,8 +120,7 @@ export function DemoProvider({ children }: { children: ReactNode }) {
         if (waiting.length === 0) return prev;
         return prev.map(p => {
           if (p.status !== 'waiting') return p;
-          const newWait = Math.max(1, p.estimatedWaitMinutes - 1);
-          return { ...p, estimatedWaitMinutes: newWait };
+          return { ...p, estimatedWaitMinutes: Math.max(1, p.estimatedWaitMinutes - 1) };
         });
       });
     }, 30000);
@@ -116,70 +151,40 @@ export function DemoProvider({ children }: { children: ReactNode }) {
     setNextTicket(t => t + 1);
     const position = patients.filter(p => p.status === 'waiting').length + 1;
     const newPatient: DemoPatient = {
-      id: `p${ticket}`,
-      ticketNumber: ticket,
-      position,
-      status: 'waiting',
-      assignedRoomId: null,
-      estimatedWaitMinutes: position * 7,
-      joinedAt: new Date(),
-      calledAt: null,
+      id: `p${ticket}`, ticketNumber: ticket, position, status: 'waiting',
+      assignedRoomId: null, estimatedWaitMinutes: position * 7, joinedAt: new Date(), calledAt: null,
     };
     setPatients(prev => [...prev, newPatient]);
     return newPatient;
   }, [nextTicket, patients]);
 
   const callNextPatient = useCallback((roomId: string) => {
-    const next = patients
-      .filter(p => p.status === 'waiting')
-      .sort((a, b) => a.position - b.position)[0];
+    const next = patients.filter(p => p.status === 'waiting').sort((a, b) => a.position - b.position)[0];
     if (!next) return null;
-
-    setPatients(prev => {
-      const updated = prev.map(p => {
-        if (p.id === next.id) return { ...p, status: 'called' as const, assignedRoomId: roomId, calledAt: new Date() };
-        if (p.status === 'waiting' && p.position > next.position) return { ...p, position: p.position - 1, estimatedWaitMinutes: Math.max(1, p.estimatedWaitMinutes - 7) };
-        return p;
-      });
-      return updated;
-    });
-
-    const room = rooms.find(r => r.id === roomId);
-    setRooms(prev => prev.map(r =>
-      r.id === roomId ? { ...r, status: 'occupied', currentTicketNumber: next.ticketNumber } : r
-    ));
-
+    setPatients(prev => prev.map(p => {
+      if (p.id === next.id) return { ...p, status: 'called' as const, assignedRoomId: roomId, calledAt: new Date() };
+      if (p.status === 'waiting' && p.position > next.position) return { ...p, position: p.position - 1, estimatedWaitMinutes: Math.max(1, p.estimatedWaitMinutes - 7) };
+      return p;
+    }));
+    setRooms(prev => prev.map(r => r.id === roomId ? { ...r, status: 'occupied', currentTicketNumber: next.ticketNumber } : r));
     setTimeout(() => {
-      setPatients(prev => prev.map(p =>
-        p.id === next.id && p.status === 'called' ? { ...p, status: 'in_progress' } : p
-      ));
+      setPatients(prev => prev.map(p => p.id === next.id && p.status === 'called' ? { ...p, status: 'in_progress' } : p));
     }, 1000);
-
     return { ...next, assignedRoomId: roomId, calledAt: new Date() };
-  }, [patients, rooms]);
+  }, [patients]);
 
   const completePatient = useCallback((roomId: string) => {
     const room = rooms.find(r => r.id === roomId);
     if (!room?.currentTicketNumber) return;
-
-    setPatients(prev => prev.map(p =>
-      p.ticketNumber === room.currentTicketNumber ? { ...p, status: 'completed' } : p
-    ));
-    setRooms(prev => prev.map(r =>
-      r.id === roomId ? { ...r, status: 'open', currentTicketNumber: null } : r
-    ));
+    setPatients(prev => prev.map(p => p.ticketNumber === room.currentTicketNumber ? { ...p, status: 'completed' } : p));
+    setRooms(prev => prev.map(r => r.id === roomId ? { ...r, status: 'open', currentTicketNumber: null } : r));
   }, [rooms]);
 
   const markNoShow = useCallback((roomId: string) => {
     const room = rooms.find(r => r.id === roomId);
     if (!room?.currentTicketNumber) return;
-
-    setPatients(prev => prev.map(p =>
-      p.ticketNumber === room.currentTicketNumber ? { ...p, status: 'no_show' } : p
-    ));
-    setRooms(prev => prev.map(r =>
-      r.id === roomId ? { ...r, status: 'open', currentTicketNumber: null } : r
-    ));
+    setPatients(prev => prev.map(p => p.ticketNumber === room.currentTicketNumber ? { ...p, status: 'no_show' } : p));
+    setRooms(prev => prev.map(r => r.id === roomId ? { ...r, status: 'open', currentTicketNumber: null } : r));
   }, [rooms]);
 
   const toggleRoomPause = useCallback((roomId: string) => {
@@ -192,24 +197,50 @@ export function DemoProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const openRoom = useCallback((roomId: string) => {
-    setRooms(prev => prev.map(r =>
-      r.id === roomId ? { ...r, status: 'open' } : r
-    ));
+    setRooms(prev => prev.map(r => r.id === roomId ? { ...r, status: 'open' } : r));
   }, []);
 
   const closeRoom = useCallback((roomId: string) => {
-    setRooms(prev => prev.map(r =>
-      r.id === roomId ? { ...r, status: 'closed', currentTicketNumber: null } : r
-    ));
+    setRooms(prev => prev.map(r => r.id === roomId ? { ...r, status: 'closed', currentTicketNumber: null } : r));
+  }, []);
+
+  // Room management
+  const addRoom = useCallback((name: string) => {
+    const id = `r${nextRoomId++}`;
+    setRooms(prev => [...prev, { id, name, status: 'closed', staffName: null, currentTicketNumber: null, isActive: true }]);
+  }, []);
+
+  const updateRoom = useCallback((id: string, updates: { name?: string; isActive?: boolean }) => {
+    setRooms(prev => prev.map(r => r.id === id ? { ...r, ...updates } : r));
+  }, []);
+
+  const removeRoom = useCallback((id: string) => {
+    setRooms(prev => prev.filter(r => r.id !== id));
+  }, []);
+
+  // Staff management
+  const addStaffMember = useCallback((member: { displayName: string; email: string; role: 'clinic_admin' | 'staff' }) => {
+    const id = `s${nextStaffId++}`;
+    setStaff(prev => [...prev, { id, ...member, isActive: true, assignedRoomId: null }]);
+  }, []);
+
+  const updateStaffMember = useCallback((id: string, updates: Partial<Pick<DemoStaffMember, 'displayName' | 'email' | 'role' | 'isActive'>>) => {
+    setStaff(prev => prev.map(s => s.id === id ? { ...s, ...updates } : s));
+  }, []);
+
+  const removeStaffMember = useCallback((id: string) => {
+    setStaff(prev => prev.filter(s => s.id !== id));
   }, []);
 
   return (
     <DemoContext.Provider value={{
-      patients, rooms, stats, calledTickets,
-      clinicName: 'Kungsholmens Vårdcentral',
-      clinicSlug: 'kungsholmen',
+      patients, rooms, staff, stats, calledTickets,
+      clinicName: 'Kungsholmens Vårdcentral', clinicSlug: 'kungsholmen',
+      currentUserRole, setCurrentUserRole,
       joinQueue, callNextPatient, completePatient, markNoShow,
       toggleRoomPause, openRoom, closeRoom,
+      addRoom, updateRoom, removeRoom,
+      addStaffMember, updateStaffMember, removeStaffMember,
     }}>
       {children}
     </DemoContext.Provider>
