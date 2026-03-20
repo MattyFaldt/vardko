@@ -39,6 +39,9 @@ import {
   ResponsiveContainer,
 } from 'recharts';
 import { useDemo, UserRole } from '../../lib/demo-data.js';
+import { useAuth } from '../../lib/auth-context';
+import { useNavigate } from 'react-router-dom';
+import { LogOut } from 'lucide-react';
 
 /* ---------------------------------------------------------------------------
    Constants & types
@@ -409,7 +412,7 @@ function QueueSection() {
    --------------------------------------------------------------------------- */
 
 function RoomsSection() {
-  const { rooms, updateRoom, addRoom, removeRoom } = useDemo();
+  const { rooms, staff, updateRoom, addRoom, removeRoom, assignStaffToRoom } = useDemo();
   const [showAddForm, setShowAddForm] = useState(false);
   const [newRoomName, setNewRoomName] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -514,7 +517,20 @@ function RoomsSection() {
                   <td className="px-5 py-3">
                     <Badge className={STATUS_BADGE[room.status] || 'bg-gray-100 text-gray-600'}>{STATUS_LABELS[room.status] || room.status}</Badge>
                   </td>
-                  <td className="px-5 py-3 text-gray-600">{room.staffName || '—'}</td>
+                  <td className="px-5 py-3">
+                    <select
+                      value={staff.find(s => s.assignedRoomId === room.id)?.id || ''}
+                      onChange={e => assignStaffToRoom(room.id, e.target.value || null)}
+                      className="w-full max-w-[180px] text-sm border border-gray-200 rounded-lg px-2 py-1.5 bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                    >
+                      <option value="">— Ingen —</option>
+                      {staff.filter(s => s.isActive && s.role === 'staff').map(s => (
+                        <option key={s.id} value={s.id} disabled={s.assignedRoomId !== null && s.assignedRoomId !== room.id}>
+                          {s.displayName}{s.assignedRoomId && s.assignedRoomId !== room.id ? ' (tilldelad)' : ''}
+                        </option>
+                      ))}
+                    </select>
+                  </td>
                   <td className="px-5 py-3 text-gray-600">
                     {room.currentTicketNumber ? <span className="font-mono font-medium">#{room.currentTicketNumber}</span> : '—'}
                   </td>
@@ -951,12 +967,17 @@ function SystemSection() {
 
 export function AdminPage() {
   const { clinicName, currentUserRole, setCurrentUserRole } = useDemo();
+  const { user, logout } = useAuth();
+  const navigate = useNavigate();
   const [activeSection, setActiveSection] = useState<Section>('dashboard');
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [roleDropdownOpen, setRoleDropdownOpen] = useState(false);
 
+  // Sync demo role with auth user role
+  const effectiveRole: UserRole = user?.role ?? currentUserRole;
+
   // Filter nav items based on role
-  const visibleNav = NAV_ITEMS.filter(item => item.minRole.includes(currentUserRole));
+  const visibleNav = NAV_ITEMS.filter(item => item.minRole.includes(effectiveRole));
 
   // If current section is not available for this role, reset to dashboard
   const currentSectionAvailable = visibleNav.some(item => item.id === activeSection);
@@ -1020,34 +1041,50 @@ export function AdminPage() {
           })}
         </nav>
 
-        {/* Role switcher (demo) */}
-        <div className="px-3 pb-4 border-t border-gray-200 pt-4">
-          <p className="px-3 mb-2 text-xs font-medium text-gray-400 uppercase tracking-wider">Demo-roll</p>
-          <div className="relative">
-            <button
-              onClick={() => setRoleDropdownOpen(!roleDropdownOpen)}
-              className="w-full flex items-center justify-between px-3 py-2.5 bg-gray-50 rounded-lg text-sm text-gray-700 hover:bg-gray-100 transition-colors"
-            >
-              <span className="font-medium">{ROLE_LABELS[currentUserRole]}</span>
-              <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform ${roleDropdownOpen ? 'rotate-180' : ''}`} />
-            </button>
-            {roleDropdownOpen && (
-              <div className="absolute bottom-full left-0 right-0 mb-1 bg-white border border-gray-200 rounded-lg shadow-lg py-1 z-50">
-                {ALL_ROLES.map(role => (
-                  <button
-                    key={role}
-                    onClick={() => { setCurrentUserRole(role); setRoleDropdownOpen(false); }}
-                    className={`w-full text-left px-3 py-2 text-sm transition-colors ${
-                      currentUserRole === role
-                        ? 'bg-blue-50 text-blue-700 font-medium'
-                        : 'text-gray-700 hover:bg-gray-50'
-                    }`}
-                  >
-                    {ROLE_LABELS[role]}
-                  </button>
-                ))}
-              </div>
-            )}
+        {/* User info + logout */}
+        <div className="px-3 pb-4 border-t border-gray-200 pt-4 space-y-3">
+          {user && (
+            <div className="px-3">
+              <p className="text-sm font-medium text-gray-900 truncate">{user.displayName}</p>
+              <p className="text-xs text-gray-500 truncate">{user.email}</p>
+              <Badge className="mt-1 bg-blue-100 text-blue-700">{ROLE_LABELS[effectiveRole]}</Badge>
+            </div>
+          )}
+          <button
+            onClick={() => { logout(); navigate('/login', { replace: true }); }}
+            className="w-full flex items-center gap-2 px-3 py-2.5 rounded-lg text-sm font-medium text-red-600 hover:bg-red-50 transition-colors"
+          >
+            <LogOut className="w-4 h-4" />
+            Logga ut
+          </button>
+
+          {/* Demo role switcher */}
+          <div className="pt-2 border-t border-gray-100">
+            <p className="px-3 mb-2 text-xs font-medium text-gray-400 uppercase tracking-wider">Demo: byt roll</p>
+            <div className="relative">
+              <button
+                onClick={() => setRoleDropdownOpen(!roleDropdownOpen)}
+                className="w-full flex items-center justify-between px-3 py-2 bg-gray-50 rounded-lg text-xs text-gray-600 hover:bg-gray-100 transition-colors"
+              >
+                <span>{ROLE_LABELS[effectiveRole]}</span>
+                <ChevronDown className={`w-3.5 h-3.5 text-gray-400 transition-transform ${roleDropdownOpen ? 'rotate-180' : ''}`} />
+              </button>
+              {roleDropdownOpen && (
+                <div className="absolute bottom-full left-0 right-0 mb-1 bg-white border border-gray-200 rounded-lg shadow-lg py-1 z-50">
+                  {ALL_ROLES.map(role => (
+                    <button
+                      key={role}
+                      onClick={() => { setCurrentUserRole(role); setRoleDropdownOpen(false); }}
+                      className={`w-full text-left px-3 py-1.5 text-xs transition-colors ${
+                        effectiveRole === role ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-700 hover:bg-gray-50'
+                      }`}
+                    >
+                      {ROLE_LABELS[role]}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </div>
@@ -1073,7 +1110,7 @@ export function AdminPage() {
               <span className="text-sm font-bold text-gray-900">VårdKö</span>
             </div>
           </div>
-          <Badge className="bg-blue-100 text-blue-700">{ROLE_LABELS[currentUserRole]}</Badge>
+          <Badge className="bg-blue-100 text-blue-700">{ROLE_LABELS[effectiveRole]}</Badge>
         </div>
       </header>
 

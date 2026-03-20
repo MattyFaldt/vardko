@@ -67,6 +67,8 @@ interface DemoContextValue {
   addStaffMember: (member: { displayName: string; email: string; role: 'clinic_admin' | 'staff' }) => void;
   updateStaffMember: (id: string, updates: Partial<Pick<DemoStaffMember, 'displayName' | 'email' | 'role' | 'isActive'>>) => void;
   removeStaffMember: (id: string) => void;
+  // Staff-room assignment
+  assignStaffToRoom: (roomId: string, staffId: string | null) => void;
 }
 
 const DemoContext = createContext<DemoContextValue | null>(null);
@@ -232,6 +234,19 @@ export function DemoProvider({ children }: { children: ReactNode }) {
     setStaff(prev => prev.filter(s => s.id !== id));
   }, []);
 
+  const assignStaffToRoom = useCallback((roomId: string, staffId: string | null) => {
+    // Unassign any staff currently on this room
+    setStaff(prev => prev.map(s => s.assignedRoomId === roomId ? { ...s, assignedRoomId: null } : s));
+    // Assign the new staff member
+    if (staffId) {
+      setStaff(prev => prev.map(s => s.id === staffId ? { ...s, assignedRoomId: roomId } : s));
+      const member = staff.find(s => s.id === staffId);
+      setRooms(prev => prev.map(r => r.id === roomId ? { ...r, staffName: member?.displayName ?? null } : r));
+    } else {
+      setRooms(prev => prev.map(r => r.id === roomId ? { ...r, staffName: null } : r));
+    }
+  }, [staff]);
+
   return (
     <DemoContext.Provider value={{
       patients, rooms, staff, stats, calledTickets,
@@ -241,6 +256,7 @@ export function DemoProvider({ children }: { children: ReactNode }) {
       toggleRoomPause, openRoom, closeRoom,
       addRoom, updateRoom, removeRoom,
       addStaffMember, updateStaffMember, removeStaffMember,
+      assignStaffToRoom,
     }}>
       {children}
     </DemoContext.Provider>

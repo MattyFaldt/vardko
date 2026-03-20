@@ -1,194 +1,128 @@
-import { useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { Heart, Mail, Lock, ChevronDown, Eye, EyeOff } from "lucide-react";
-
-const CLINICS = [
-  { value: "", label: "Välj klinik (valfritt)" },
-  { value: "kungsholmen", label: "Kungsholmens Vårdcentral" },
-  { value: "sodermalm", label: "Södermalms Vårdcentral" },
-  { value: "norrmalm", label: "Norrmalms Vårdcentral" },
-];
+import { useState } from 'react';
+import { useNavigate, Navigate } from 'react-router-dom';
+import { Heart, Mail, Lock, Eye, EyeOff, AlertCircle, LogIn } from 'lucide-react';
+import { useAuth, DEMO_ACCOUNTS } from '../../lib/auth-context';
 
 export function LoginPage() {
+  const { login, isAuthenticated, user } = useAuth();
   const navigate = useNavigate();
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [clinic, setClinic] = useState("");
+
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [touched, setTouched] = useState<Record<string, boolean>>({});
+  const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [attempts, setAttempts] = useState(0);
+  const [locked, setLocked] = useState(false);
 
-  const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
-  const passwordValid = password.length >= 6;
-  const formValid = emailValid && passwordValid;
-
-  function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    setTouched({ email: true, password: true });
-    if (!formValid) return;
-
-    setLoading(true);
-    // Demo mode — simulate a brief delay, then navigate
-    setTimeout(() => {
-      navigate("/staff");
-    }, 600);
+  if (isAuthenticated && user) {
+    const target = user.role === 'staff' ? '/staff' : '/admin';
+    return <Navigate to={target} replace />;
   }
 
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+
+    if (locked) {
+      setError('Kontot är tillfälligt låst. Vänta en stund och försök igen.');
+      return;
+    }
+    if (!email.trim()) { setError('Ange din e-postadress'); return; }
+    if (!password) { setError('Ange ditt lösenord'); return; }
+
+    setLoading(true);
+    await new Promise(r => setTimeout(r, 600));
+
+    const result = login(email, password);
+
+    if (result.success) {
+      setAttempts(0);
+      const account = DEMO_ACCOUNTS.find(a => a.email === email.trim().toLowerCase());
+      const target = account?.user.role === 'staff' ? '/staff' : '/admin';
+      navigate(target, { replace: true });
+    } else {
+      const newAttempts = attempts + 1;
+      setAttempts(newAttempts);
+      if (newAttempts >= 5) {
+        setLocked(true);
+        setError('För många misslyckade försök. Kontot är låst i 15 minuter.');
+        setTimeout(() => { setLocked(false); setAttempts(0); }, 15 * 60 * 1000);
+      } else {
+        setError(result.error || 'Felaktig e-post eller lösenord');
+      }
+    }
+    setLoading(false);
+  };
+
   return (
-    <div className="min-h-screen bg-gradient-to-b from-blue-50 to-white flex items-center justify-center p-4">
-      <div className="w-full max-w-md">
-        {/* Logo / Brand */}
+    <div className="min-h-screen bg-gradient-to-b from-blue-50 to-white flex items-center justify-center px-4 py-12">
+      <div className="w-full max-w-sm">
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-blue-600 text-white mb-4 shadow-lg shadow-blue-200">
-            <Heart className="w-8 h-8" />
+          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-600 shadow-lg shadow-blue-200">
+            <Heart className="h-7 w-7 text-white" />
           </div>
-          <h1 className="text-3xl font-bold text-slate-900 tracking-tight">
-            VårdKö
-          </h1>
-          <p className="text-slate-500 mt-1 text-sm">
-            Digitalt kösystem för vården
-          </p>
+          <h1 className="text-2xl font-bold tracking-tight text-gray-900">VårdKö</h1>
+          <p className="mt-1 text-sm text-gray-500">Logga in för att fortsätta</p>
         </div>
 
-        {/* Card */}
-        <div className="bg-white rounded-2xl shadow-xl shadow-slate-200/60 border border-slate-100 p-8">
-          <h2 className="text-xl font-semibold text-slate-800 mb-6">
-            Logga in
-          </h2>
-
-          <form onSubmit={handleSubmit} className="space-y-5">
-            {/* Email */}
+        <div className="rounded-2xl bg-white p-6 shadow-md ring-1 ring-gray-100">
+          <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label
-                htmlFor="email"
-                className="block text-sm font-medium text-slate-700 mb-1.5"
-              >
-                E-postadress
-              </label>
+              <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1.5">E-post</label>
               <div className="relative">
-                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                <input
-                  id="email"
-                  type="email"
-                  autoComplete="email"
+                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                <input id="email" type="email" autoComplete="email" value={email}
+                  onChange={e => { setEmail(e.target.value); setError(''); }}
                   placeholder="namn@klinik.se"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  onBlur={() => setTouched((t) => ({ ...t, email: true }))}
-                  className={`w-full pl-10 pr-4 py-2.5 rounded-lg border text-sm outline-none transition-colors ${
-                    touched.email && !emailValid
-                      ? "border-red-300 focus:border-red-400 focus:ring-2 focus:ring-red-100"
-                      : "border-slate-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
-                  }`}
-                />
+                  className="w-full rounded-lg border border-gray-300 bg-white py-2.5 pl-10 pr-4 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20" />
               </div>
-              {touched.email && !emailValid && (
-                <p className="text-red-500 text-xs mt-1">
-                  Ange en giltig e-postadress
-                </p>
-              )}
             </div>
 
-            {/* Password */}
             <div>
-              <label
-                htmlFor="password"
-                className="block text-sm font-medium text-slate-700 mb-1.5"
-              >
-                Lösenord
-              </label>
+              <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-1.5">Lösenord</label>
               <div className="relative">
-                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                <input
-                  id="password"
-                  type={showPassword ? "text" : "password"}
-                  autoComplete="current-password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  onBlur={() => setTouched((t) => ({ ...t, password: true }))}
-                  className={`w-full pl-10 pr-10 py-2.5 rounded-lg border text-sm outline-none transition-colors ${
-                    touched.password && !passwordValid
-                      ? "border-red-300 focus:border-red-400 focus:ring-2 focus:ring-red-100"
-                      : "border-slate-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
-                  }`}
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword((v) => !v)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
-                  tabIndex={-1}
-                >
-                  {showPassword ? (
-                    <EyeOff className="w-4 h-4" />
-                  ) : (
-                    <Eye className="w-4 h-4" />
-                  )}
+                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                <input id="password" type={showPassword ? 'text' : 'password'} autoComplete="current-password"
+                  value={password} onChange={e => { setPassword(e.target.value); setError(''); }}
+                  className="w-full rounded-lg border border-gray-300 bg-white py-2.5 pl-10 pr-10 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20" />
+                <button type="button" onClick={() => setShowPassword(v => !v)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600" tabIndex={-1}>
+                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                 </button>
               </div>
-              {touched.password && !passwordValid && (
-                <p className="text-red-500 text-xs mt-1">
-                  Lösenordet måste vara minst 6 tecken
-                </p>
-              )}
             </div>
 
-            {/* Clinic dropdown */}
-            <div>
-              <label
-                htmlFor="clinic"
-                className="block text-sm font-medium text-slate-700 mb-1.5"
-              >
-                Klinik
-              </label>
-              <div className="relative">
-                <select
-                  id="clinic"
-                  value={clinic}
-                  onChange={(e) => setClinic(e.target.value)}
-                  className="w-full appearance-none pl-4 pr-10 py-2.5 rounded-lg border border-slate-200 text-sm outline-none transition-colors focus:border-blue-400 focus:ring-2 focus:ring-blue-100 bg-white text-slate-700"
-                >
-                  {CLINICS.map((c) => (
-                    <option key={c.value} value={c.value}>
-                      {c.label}
-                    </option>
-                  ))}
-                </select>
-                <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+            {error && (
+              <div className="flex items-start gap-2 rounded-lg bg-red-50 px-3 py-2.5 text-sm text-red-700 ring-1 ring-red-200">
+                <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
+                <span>{error}</span>
               </div>
-            </div>
+            )}
 
-            {/* Submit */}
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full py-2.5 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 active:bg-blue-800 transition-colors disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-            >
+            <button type="submit" disabled={loading || locked}
+              className="flex w-full items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed">
               {loading ? (
-                <>
-                  <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                  Loggar in…
-                </>
+                <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
               ) : (
-                "Logga in"
+                <LogIn className="h-4 w-4" />
               )}
+              {loading ? 'Loggar in...' : 'Logga in'}
             </button>
           </form>
 
-          {/* Forgot password */}
-          <div className="text-center mt-5">
-            <button
-              type="button"
-              className="text-sm text-blue-600 hover:text-blue-700 hover:underline"
-            >
-              Glömt lösenord?
-            </button>
-          </div>
+          {attempts > 0 && attempts < 5 && (
+            <p className="mt-3 text-center text-xs text-gray-400">{5 - attempts} försök kvar</p>
+          )}
         </div>
 
-        {/* Footer note */}
-        <p className="text-center text-xs text-slate-400 mt-6">
-          Demo-läge — inloggning simuleras lokalt
-        </p>
+        <div className="mt-6 rounded-xl bg-blue-50 p-4 ring-1 ring-blue-100">
+          <p className="text-xs font-semibold text-blue-800 mb-2">Demokonton:</p>
+          <div className="space-y-1.5 text-xs text-blue-700">
+            <div className="flex justify-between"><span className="font-medium">Admin:</span><span className="font-mono">anna@kungsholmen.se / Admin123456!</span></div>
+            <div className="flex justify-between"><span className="font-medium">Personal:</span><span className="font-mono">erik@kungsholmen.se / Staff123456!</span></div>
+          </div>
+        </div>
       </div>
     </div>
   );

@@ -2,6 +2,8 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { DemoProvider } from './lib/demo-data';
+import { AuthProvider } from './lib/auth-context';
+import { ProtectedRoute } from './lib/protected-route';
 import './index.css';
 
 import { PatientQueuePage } from './features/patient/patient-queue-page';
@@ -14,19 +16,20 @@ import { HomePage } from './features/home/home-page';
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <BrowserRouter>
-      <DemoProvider>
-        <Routes>
-          <Route path="/" element={<HomePage />} />
-          <Route path="/queue/:clinicSlug" element={<PatientQueuePage />} />
-          <Route path="/display/:clinicSlug" element={<DisplayBoardPage />} />
-          <Route path="/staff" element={<StaffPage />} />
-          <Route path="/admin" element={<AdminPage />} />
-          <Route path="/login" element={<LoginPage />} />
-          {/* Legacy routes redirect to unified admin */}
-          <Route path="/org" element={<Navigate to="/admin" replace />} />
-          <Route path="/system" element={<Navigate to="/admin" replace />} />
-        </Routes>
-      </DemoProvider>
+      <AuthProvider>
+        <DemoProvider>
+          <Routes>
+            <Route path="/" element={<HomePage />} />
+            <Route path="/queue/:clinicSlug" element={<PatientQueuePage />} />
+            <Route path="/display/:clinicSlug" element={<DisplayBoardPage />} />
+            <Route path="/staff" element={<ProtectedRoute><StaffPage /></ProtectedRoute>} />
+            <Route path="/admin" element={<ProtectedRoute><AdminPage /></ProtectedRoute>} />
+            <Route path="/login" element={<LoginPage />} />
+            <Route path="/org" element={<Navigate to="/admin" replace />} />
+            <Route path="/system" element={<Navigate to="/admin" replace />} />
+          </Routes>
+        </DemoProvider>
+      </AuthProvider>
     </BrowserRouter>
   </StrictMode>,
 );
