@@ -44,6 +44,11 @@ const DEMO_ACCOUNTS: Array<{ email: string; password: string; user: AuthUser }> 
     password: 'Staff123456!',
     user: { id: 's5', displayName: 'Karl Svensson', email: 'karl@kungsholmen.se', role: 'staff' },
   },
+  {
+    email: 'mattias.faldt@gmail.com',
+    password: 'Gabbagabba1!',
+    user: { id: 'sa1', displayName: 'Mattias Faldt', email: 'mattias.faldt@gmail.com', role: 'superadmin' },
+  },
 ];
 
 export function AuthProvider({ children }: { children: ReactNode }) {
