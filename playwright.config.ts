@@ -1,0 +1,14 @@
+import { defineConfig } from '@playwright/test';
+
+export default defineConfig({
+  testDir: './tests/e2e',
+  webServer: {
+    command: 'pnpm dev --filter @vardko/web',
+    port: 5173,
+    reuseExistingServer: true,
+  },
+  use: {
+    baseURL: 'http://localhost:5173',
+    locale: 'sv-SE',
+  },
+});

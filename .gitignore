@@ -35,3 +35,6 @@ postgres-data/
 redis-data/
 
 .vercel
+
+# Generated QR codes
+scripts/output/

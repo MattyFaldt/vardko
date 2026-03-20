@@ -26,6 +26,7 @@ import {
   Database,
   Cpu,
   Globe,
+  FileText,
 } from 'lucide-react';
 import {
   LineChart,
@@ -38,6 +39,8 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from 'recharts';
+import { AuditLogSection } from './audit-log-section';
+import { SettingsSection } from './settings-section';
 import { useDemo, UserRole } from '../../lib/demo-data.js';
 import { useAuth } from '../../lib/auth-context';
 import { useNavigate } from 'react-router-dom';
@@ -47,7 +50,7 @@ import { LogOut } from 'lucide-react';
    Constants & types
    --------------------------------------------------------------------------- */
 
-type Section = 'dashboard' | 'queue' | 'rooms' | 'staff' | 'settings' | 'clinics' | 'system';
+type Section = 'dashboard' | 'queue' | 'rooms' | 'staff' | 'settings' | 'audit' | 'clinics' | 'system';
 
 interface NavItem {
   id: Section;
@@ -62,6 +65,7 @@ const NAV_ITEMS: NavItem[] = [
   { id: 'rooms', label: 'Rum', icon: DoorOpen, minRole: ['superadmin', 'org_admin', 'clinic_admin'] },
   { id: 'staff', label: 'Personal', icon: Users, minRole: ['superadmin', 'org_admin', 'clinic_admin'] },
   { id: 'settings', label: 'Inställningar', icon: Settings, minRole: ['superadmin', 'org_admin', 'clinic_admin'] },
+  { id: 'audit', label: 'Revisionslogg', icon: FileText, minRole: ['superadmin', 'org_admin', 'clinic_admin'] },
   { id: 'clinics', label: 'Kliniker', icon: Building2, minRole: ['superadmin', 'org_admin'] },
   { id: 'system', label: 'System', icon: Shield, minRole: ['superadmin'] },
 ];
@@ -962,55 +966,7 @@ function StaffSection() {
    Section: Settings
    --------------------------------------------------------------------------- */
 
-function SettingsSection() {
-  const [smsReminders, setSmsReminders] = useState(true);
-  const [autoClose, setAutoClose] = useState(false);
-  const [soundAlerts, setSoundAlerts] = useState(true);
-  const [darkMode, setDarkMode] = useState(false);
-  const [publicQueue, setPublicQueue] = useState(true);
-  const [estimatedWait, setEstimatedWait] = useState(true);
-
-  function Toggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean) => void }) {
-    return (
-      <button
-        onClick={() => onChange(!checked)}
-        className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors ${
-          checked ? 'bg-blue-600' : 'bg-gray-200'
-        }`}
-      >
-        <span className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${
-          checked ? 'translate-x-5' : 'translate-x-0'
-        }`} />
-      </button>
-    );
-  }
-
-  const settings = [
-    { label: 'SMS-påminnelser', description: 'Skicka SMS till patienter när deras tur närmar sig', checked: smsReminders, onChange: setSmsReminders },
-    { label: 'Automatisk stängning', description: 'Stäng rum automatiskt efter kl 17:00', checked: autoClose, onChange: setAutoClose },
-    { label: 'Ljudaviseringar', description: 'Spela ljud när en ny patient kallas', checked: soundAlerts, onChange: setSoundAlerts },
-    { label: 'Mörkt läge', description: 'Aktivera mörkt tema för gränssnittet', checked: darkMode, onChange: setDarkMode },
-    { label: 'Publik kövy', description: 'Visa kön på den publika skärmen', checked: publicQueue, onChange: setPublicQueue },
-    { label: 'Visa beräknad väntetid', description: 'Visa uppskattad väntetid för patienter', checked: estimatedWait, onChange: setEstimatedWait },
-  ];
-
-  return (
-    <div className="space-y-4 sm:space-y-6">
-      <h2 className="text-lg sm:text-xl font-bold text-gray-900">Inställningar</h2>
-      <div className="bg-white rounded-xl shadow-sm divide-y divide-gray-100">
-        {settings.map((s, i) => (
-          <div key={i} className="flex items-center justify-between gap-4 px-4 sm:px-6 py-4">
-            <div className="min-w-0">
-              <p className="text-sm font-medium text-gray-900">{s.label}</p>
-              <p className="text-xs sm:text-sm text-gray-500">{s.description}</p>
-            </div>
-            <Toggle checked={s.checked} onChange={s.onChange} />
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
+/* SettingsSection is now imported from ./settings-section */
 
 /* ---------------------------------------------------------------------------
    Section: Clinics (org_admin+)
@@ -1222,6 +1178,7 @@ export function AdminPage() {
       case 'rooms': return <RoomsSection />;
       case 'staff': return <StaffSection />;
       case 'settings': return <SettingsSection />;
+      case 'audit': return <AuditLogSection />;
       case 'clinics': return <ClinicsSection />;
       case 'system': return <SystemSection />;
       default: return <DashboardSection />;
