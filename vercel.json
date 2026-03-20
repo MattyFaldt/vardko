@@ -3,5 +3,8 @@
   "buildCommand": "pnpm turbo build --filter=@vardko/web",
   "outputDirectory": "apps/web/dist",
   "installCommand": "pnpm install",
-  "framework": "vite"
+  "framework": "vite",
+  "rewrites": [
+    { "source": "/(.*)", "destination": "/index.html" }
+  ]
 }
