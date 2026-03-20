@@ -5,6 +5,8 @@
     "rootDir": "src",
     "composite": true,
     "jsx": "react-jsx",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "types": [],
     "noUnusedLocals": false,
     "noUnusedParameters": false
   },
