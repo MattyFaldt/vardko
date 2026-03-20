@@ -13,6 +13,7 @@ import {
 import { useDemo, DemoPatient } from '../../lib/demo-data';
 
 const PERSONNUMMER_REGEX = /^\d{8}-\d{4}$/;
+const SESSION_KEY_PREFIX = 'vardko_queue_';
 
 function formatPersonnummer(raw: string): string {
   const digits = raw.replace(/[^\d-]/g, '');
@@ -21,6 +22,42 @@ function formatPersonnummer(raw: string): string {
     return digits.slice(0, 8) + '-' + digits.slice(8, 12);
   }
   return digits.slice(0, 13);
+}
+
+interface SavedSession {
+  patientId: string;
+  ticketNumber: number;
+  clinicSlug: string;
+  savedAt: number;
+}
+
+function saveSession(clinicSlug: string, patientId: string, ticketNumber: number) {
+  const data: SavedSession = { patientId, ticketNumber, clinicSlug, savedAt: Date.now() };
+  try {
+    sessionStorage.setItem(SESSION_KEY_PREFIX + clinicSlug, JSON.stringify(data));
+  } catch { /* sessionStorage unavailable */ }
+}
+
+function loadSession(clinicSlug: string): SavedSession | null {
+  try {
+    const raw = sessionStorage.getItem(SESSION_KEY_PREFIX + clinicSlug);
+    if (!raw) return null;
+    const data = JSON.parse(raw) as SavedSession;
+    // Expire after 24 hours
+    if (Date.now() - data.savedAt > 24 * 60 * 60 * 1000) {
+      sessionStorage.removeItem(SESSION_KEY_PREFIX + clinicSlug);
+      return null;
+    }
+    return data;
+  } catch {
+    return null;
+  }
+}
+
+function clearSession(clinicSlug: string) {
+  try {
+    sessionStorage.removeItem(SESSION_KEY_PREFIX + clinicSlug);
+  } catch { /* ignore */ }
 }
 
 export function PatientQueuePage() {
@@ -33,6 +70,38 @@ export function PatientQueuePage() {
   const [view, setView] = useState<'initial' | 'queue' | 'called'>('initial');
   const [calledRoom, setCalledRoom] = useState('');
   const [pulseKey, setPulseKey] = useState(0);
+  const [restored, setRestored] = useState(false);
+
+  // Restore session on mount
+  useEffect(() => {
+    if (restored || !clinicSlug) return;
+    setRestored(true);
+
+    const saved = loadSession(clinicSlug);
+    if (!saved) return;
+
+    const match = patients.find(p => p.id === saved.patientId);
+    if (!match) return;
+
+    // Only restore if patient is still active in queue
+    if (match.status === 'waiting' || match.status === 'called' || match.status === 'in_progress') {
+      setMyTicket(match);
+      if (match.status === 'called' || match.status === 'in_progress') {
+        const called = calledTickets.find(ct => ct.ticketNumber === match.ticketNumber);
+        if (called) {
+          setCalledRoom(called.roomName);
+          setView('called');
+        } else {
+          setView('queue');
+        }
+      } else {
+        setView('queue');
+      }
+    } else {
+      // Ticket completed/cancelled/no-show — clear stale session
+      clearSession(clinicSlug);
+    }
+  }, [clinicSlug]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Track position updates from the demo context
   useEffect(() => {
@@ -43,6 +112,12 @@ export function PatientQueuePage() {
 
     setMyTicket(match);
 
+    // If ticket is done, clear session
+    if (match.status === 'completed' || match.status === 'no_show' || match.status === 'cancelled') {
+      if (clinicSlug) clearSession(clinicSlug);
+      return;
+    }
+
     if (match.status === 'called' || match.status === 'in_progress') {
       const called = calledTickets.find(ct => ct.ticketNumber === match.ticketNumber);
       if (called) {
@@ -51,7 +126,7 @@ export function PatientQueuePage() {
         setPulseKey(k => k + 1);
       }
     }
-  }, [patients, calledTickets, myTicket?.id]);
+  }, [patients, calledTickets, myTicket?.id, clinicSlug]);
 
   const handlePersonnummerChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const formatted = formatPersonnummer(e.target.value);
@@ -68,13 +143,15 @@ export function PatientQueuePage() {
     const patient = joinQueue();
     setMyTicket(patient);
     setView('queue');
-  }, [personnummer, joinQueue]);
+    if (clinicSlug) saveSession(clinicSlug, patient.id, patient.ticketNumber);
+  }, [personnummer, joinQueue, clinicSlug]);
 
   const handleLeaveQueue = useCallback(() => {
+    if (clinicSlug) clearSession(clinicSlug);
     setMyTicket(null);
     setView('initial');
     setPersonnummer('');
-  }, []);
+  }, [clinicSlug]);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
