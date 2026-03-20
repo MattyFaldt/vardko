@@ -12,6 +12,7 @@ import { StaffPage } from './features/staff/staff-page';
 import { AdminPage } from './features/admin/admin-page';
 import { LoginPage } from './features/auth/login-page';
 import { HomePage } from './features/home/home-page';
+import { QrEmbedPage } from './features/qr/qr-embed-page';
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
@@ -24,6 +25,7 @@ createRoot(document.getElementById('root')!).render(
             <Route path="/display/:clinicSlug" element={<DisplayBoardPage />} />
             <Route path="/staff" element={<ProtectedRoute><StaffPage /></ProtectedRoute>} />
             <Route path="/admin" element={<ProtectedRoute><AdminPage /></ProtectedRoute>} />
+            <Route path="/qr/:clinicSlug/embed" element={<QrEmbedPage />} />
             <Route path="/login" element={<LoginPage />} />
             <Route path="/org" element={<Navigate to="/admin" replace />} />
             <Route path="/system" element={<Navigate to="/admin" replace />} />
