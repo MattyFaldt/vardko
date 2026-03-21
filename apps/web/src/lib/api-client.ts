@@ -260,7 +260,7 @@ export async function getClinicInfoApi(clinicSlug: string) {
     name: string;
     slug: string;
     status: string;
-  }>(`/clinics/${clinicSlug}`);
+  }>(`/clinic/${clinicSlug}/info`);
 }
 
 // ---------------------------------------------------------------------------
