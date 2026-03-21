@@ -1,11 +1,8 @@
 // ==========================================================================
 // VardKo Queue API — Single-file Vercel Serverless Function (CommonJS)
-// Consolidated from the full TypeScript monorepo API.
+// Plain Node.js handler with manual routing (no frameworks).
 // ==========================================================================
 
-const { Hono } = require('hono');
-const { cors } = require('hono/cors');
-const { handle } = require('hono/vercel');
 const { SignJWT, jwtVerify } = require('jose');
 const { z } = require('zod');
 const crypto = require('crypto');
@@ -370,8 +367,8 @@ function recalcPositions(clinicId) {
 // STAFF HELPERS
 // ==========================================================================
 
-function getStaffContext(c) {
-  const staffId = c.req.header('X-Staff-Id') || 's2';
+function getStaffContext(req) {
+  const staffId = req.headers['x-staff-id'] || 's2';
   return { staffId, clinicId: CLINIC_ID };
 }
 
@@ -391,843 +388,898 @@ function assignStaffToRoom(staffId) {
 }
 
 // ==========================================================================
-// HONO APP
+// REQUEST HELPERS
 // ==========================================================================
 
-const app = new Hono();
+// Helper to parse JSON body from incoming request
+async function parseBody(req) {
+  return new Promise((resolve, reject) => {
+    let data = '';
+    req.on('data', function (chunk) { data += chunk; });
+    req.on('end', function () {
+      try { resolve(JSON.parse(data)); } catch (_e) { resolve(null); }
+    });
+    req.on('error', reject);
+  });
+}
 
-// ---------------------------------------------------------------------------
-// Middleware
-// ---------------------------------------------------------------------------
+// Helper to parse query string params from a URL
+function getQueryParams(url) {
+  const idx = url.indexOf('?');
+  if (idx === -1) return {};
+  const params = {};
+  const qs = url.slice(idx + 1);
+  qs.split('&').forEach(function (pair) {
+    const eqIdx = pair.indexOf('=');
+    if (eqIdx === -1) {
+      params[decodeURIComponent(pair)] = '';
+    } else {
+      params[decodeURIComponent(pair.slice(0, eqIdx))] = decodeURIComponent(pair.slice(eqIdx + 1));
+    }
+  });
+  return params;
+}
 
-app.use(
-  '*',
-  cors({
-    origin: process.env.CORS_ORIGIN || '*',
-    allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowHeaders: ['Content-Type', 'Authorization', 'X-Staff-Id'],
-    credentials: true,
-  }),
-);
-
-// ---------------------------------------------------------------------------
-// Health check
-// ---------------------------------------------------------------------------
-
-app.get('/api/v1/health', (c) => {
-  return c.json(
-    createSuccessResponse({
-      status: 'ok',
-      timestamp: new Date().toISOString(),
-      version: '0.0.1',
-    }),
-  );
-});
+// Helper to strip query string from URL for route matching
+function getPathname(url) {
+  const idx = url.indexOf('?');
+  return idx === -1 ? url : url.slice(0, idx);
+}
 
 // ==========================================================================
-// AUTH ROUTES — /api/v1/auth/*
+// VERCEL HANDLER
 // ==========================================================================
 
-// POST /api/v1/auth/login
-app.post('/api/v1/auth/login', async (c) => {
-  await usersReady;
+module.exports = async function handler(req, res) {
+  const url = req.url || '/';
+  const method = req.method || 'GET';
+  const pathname = getPathname(url);
 
-  const body = await c.req.json().catch(() => null);
-  const parsed = loginSchema.safeParse(body);
-  if (!parsed.success) {
-    return c.json(createErrorResponse(ERROR_CODES.INVALID_INPUT, 'Invalid input', parsed.error.flatten()), 400);
-  }
+  // CORS headers
+  res.setHeader('Access-Control-Allow-Origin', process.env.CORS_ORIGIN || '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Staff-Id');
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
 
-  const { email, password } = parsed.data;
-  const user = demoUsers.find((u) => u.email === email.trim().toLowerCase());
-
-  if (!user) {
-    return c.json(createErrorResponse(ERROR_CODES.INVALID_CREDENTIALS, 'Invalid email or password'), 401);
-  }
-
-  const valid = verifyPassword(user.passwordHash, password);
-  if (!valid) {
-    return c.json(createErrorResponse(ERROR_CODES.INVALID_CREDENTIALS, 'Invalid email or password'), 401);
-  }
-
-  const accessToken = await createAccessToken(user);
-  const refreshToken = await createRefreshTokenJWT(user);
-  activeRefreshTokens.add(refreshToken);
-
-  return c.json(
-    createSuccessResponse({
-      accessToken,
-      refreshToken,
-      user: {
-        id: user.id,
-        role: user.role,
-        clinicId: user.clinicId,
-        organizationId: user.organizationId,
-        displayName: user.displayName,
-      },
-    }),
-  );
-});
-
-// POST /api/v1/auth/refresh
-app.post('/api/v1/auth/refresh', async (c) => {
-  await usersReady;
-
-  const body = await c.req.json().catch(() => null);
-  const parsed = refreshTokenSchema.safeParse(body);
-  if (!parsed.success) {
-    return c.json(createErrorResponse(ERROR_CODES.INVALID_INPUT, 'Invalid input', parsed.error.flatten()), 400);
-  }
-
-  const { refreshToken } = parsed.data;
-
-  if (!activeRefreshTokens.has(refreshToken)) {
-    return c.json(createErrorResponse(ERROR_CODES.INVALID_TOKEN, 'Invalid or revoked refresh token'), 401);
+  if (method === 'OPTIONS') {
+    res.statusCode = 204;
+    res.end();
+    return;
   }
 
   try {
-    const { payload } = await jwtVerify(refreshToken, JWT_SECRET);
-    const userId = payload.userId;
-    const user = demoUsers.find((u) => u.id === userId);
+    let match;
 
-    if (!user) {
-      return c.json(createErrorResponse(ERROR_CODES.INVALID_TOKEN, 'User not found'), 401);
+    // -----------------------------------------------------------------------
+    // Health check — GET /api/v1/health
+    // -----------------------------------------------------------------------
+    if (method === 'GET' && pathname === '/api/v1/health') {
+      return res.status(200).json(
+        createSuccessResponse({
+          status: 'ok',
+          timestamp: new Date().toISOString(),
+          version: '0.0.1',
+        }),
+      );
     }
 
-    // Rotate refresh token
-    activeRefreshTokens.delete(refreshToken);
-    const newAccessToken = await createAccessToken(user);
-    const newRefreshToken = await createRefreshTokenJWT(user);
-    activeRefreshTokens.add(newRefreshToken);
-
-    return c.json(
-      createSuccessResponse({
-        accessToken: newAccessToken,
-        refreshToken: newRefreshToken,
-      }),
-    );
-  } catch (_err) {
-    activeRefreshTokens.delete(refreshToken);
-    return c.json(createErrorResponse(ERROR_CODES.TOKEN_EXPIRED, 'Refresh token expired'), 401);
-  }
-});
-
-// POST /api/v1/auth/logout
-app.post('/api/v1/auth/logout', async (c) => {
-  const body = await c.req.json().catch(() => null);
-  const parsed = refreshTokenSchema.safeParse(body);
-
-  if (parsed.success) {
-    activeRefreshTokens.delete(parsed.data.refreshToken);
-  }
-
-  return c.json(createSuccessResponse({ message: 'Logged out' }));
-});
-
-// ==========================================================================
-// QUEUE ROUTES — /api/v1/queue/*
-// ==========================================================================
-
-// POST /api/v1/queue/join
-app.post('/api/v1/queue/join', async (c) => {
-  const body = await c.req.json().catch(() => null);
-  const parsed = joinQueueSchema.safeParse(body);
-  if (!parsed.success) {
-    return c.json(createErrorResponse(ERROR_CODES.INVALID_INPUT, 'Invalid input', parsed.error.flatten()), 400);
-  }
-
-  const { clinicId, anonymousHash, language } = parsed.data;
-
-  // Check for duplicate hash (already in queue)
-  const existing = Array.from(tickets.values()).find(
-    (t) => t.clinicId === clinicId && t.anonymousHash === anonymousHash && t.status === 'waiting',
-  );
-  if (existing) {
-    return c.json(createErrorResponse(ERROR_CODES.ALREADY_IN_QUEUE, 'Already in queue'), 409);
-  }
-
-  // Check queue capacity
-  const currentSize = getWaitingTickets(clinicId).length;
-  if (currentSize >= MAX_QUEUE_SIZE) {
-    return c.json(createErrorResponse(ERROR_CODES.QUEUE_FULL, 'Queue is full'), 503);
-  }
-
-  const sessionToken = generateSessionToken();
-  const ticketNumber = nextTicketNumber++;
-  const position = currentSize + 1;
-  const estimatedWaitMinutes = Math.ceil((currentSize * DEFAULT_SERVICE_TIME_SECONDS) / 60);
-  const now = new Date().toISOString();
-
-  const ticket = {
-    id: crypto.randomUUID(),
-    organizationId: ORG_ID,
-    clinicId,
-    ticketNumber,
-    anonymousHash,
-    status: 'waiting',
-    priority: 0,
-    position,
-    assignedRoomId: null,
-    sessionToken,
-    estimatedWaitMinutes,
-    joinedAt: now,
-    calledAt: null,
-    completedAt: null,
-    language,
-    createdAt: now,
-    updatedAt: now,
-  };
-
-  tickets.set(sessionToken, ticket);
-
-  return c.json(
-    createSuccessResponse({
-      sessionToken,
-      ticketNumber,
-      position,
-      estimatedWaitMinutes,
-    }),
-    201,
-  );
-});
-
-// GET /api/v1/queue/status/:sessionToken
-app.get('/api/v1/queue/status/:sessionToken', (c) => {
-  const sessionToken = c.req.param('sessionToken');
-  const ticket = tickets.get(sessionToken);
-
-  if (!ticket) {
-    return c.json(createErrorResponse(ERROR_CODES.TICKET_NOT_FOUND, 'Ticket not found'), 404);
-  }
-
-  const queueLength = getWaitingTickets(ticket.clinicId).length;
-
-  return c.json(
-    createSuccessResponse({
-      ticketNumber: ticket.ticketNumber,
-      position: ticket.position,
-      estimatedWaitMinutes: ticket.estimatedWaitMinutes ?? 0,
-      status: ticket.status,
-      queueLength,
-    }),
-  );
-});
-
-// POST /api/v1/queue/postpone/:sessionToken
-app.post('/api/v1/queue/postpone/:sessionToken', async (c) => {
-  const sessionToken = c.req.param('sessionToken');
-  const ticket = tickets.get(sessionToken);
-
-  if (!ticket) {
-    return c.json(createErrorResponse(ERROR_CODES.TICKET_NOT_FOUND, 'Ticket not found'), 404);
-  }
-
-  if (ticket.status !== 'waiting') {
-    return c.json(createErrorResponse(ERROR_CODES.INVALID_INPUT, 'Ticket is not in waiting state'), 400);
-  }
-
-  const body = await c.req.json().catch(() => null);
-  const parsed = postponeSchema.safeParse(body);
-  if (!parsed.success) {
-    return c.json(createErrorResponse(ERROR_CODES.INVALID_INPUT, 'Invalid input', parsed.error.flatten()), 400);
-  }
-
-  const { positionsBack } = parsed.data;
-  const waiting = getWaitingTickets(ticket.clinicId);
-  const currentIdx = waiting.findIndex((t) => t.sessionToken === sessionToken);
-
-  if (currentIdx === -1) {
-    return c.json(createErrorResponse(ERROR_CODES.TICKET_NOT_FOUND, 'Ticket not in waiting list'), 404);
-  }
-
-  const newIdx = Math.min(currentIdx + positionsBack, waiting.length - 1);
-
-  // Move ticket in the array
-  waiting.splice(currentIdx, 1);
-  waiting.splice(newIdx, 0, ticket);
-
-  // Recalculate all positions
-  recalcPositions(ticket.clinicId);
-
-  return c.json(
-    createSuccessResponse({
-      ticketNumber: ticket.ticketNumber,
-      position: ticket.position,
-      estimatedWaitMinutes: ticket.estimatedWaitMinutes ?? 0,
-      status: ticket.status,
-    }),
-  );
-});
-
-// DELETE /api/v1/queue/leave/:sessionToken
-app.delete('/api/v1/queue/leave/:sessionToken', (c) => {
-  const sessionToken = c.req.param('sessionToken');
-  const ticket = tickets.get(sessionToken);
-
-  if (!ticket) {
-    return c.json(createErrorResponse(ERROR_CODES.TICKET_NOT_FOUND, 'Ticket not found'), 404);
-  }
-
-  ticket.status = 'cancelled';
-  ticket.completedAt = new Date().toISOString();
-  ticket.updatedAt = new Date().toISOString();
-
-  recalcPositions(ticket.clinicId);
-
-  return c.json(createSuccessResponse({ message: 'Left queue', ticketNumber: ticket.ticketNumber }));
-});
-
-// ==========================================================================
-// STAFF ROUTES — /api/v1/staff/*
-// ==========================================================================
-
-// POST /api/v1/staff/ready
-app.post('/api/v1/staff/ready', (c) => {
-  const ctx = getStaffContext(c);
-  if (!ctx) {
-    return c.json(createErrorResponse(ERROR_CODES.UNAUTHORIZED, 'Unauthorized'), 401);
-  }
-
-  const room = assignStaffToRoom(ctx.staffId);
-  if (!room) {
-    return c.json(createErrorResponse(ERROR_CODES.NO_ACTIVE_ROOM, 'No available room'), 404);
-  }
-
-  if (room.currentTicketId) {
-    return c.json(createErrorResponse(ERROR_CODES.ROOM_NOT_AVAILABLE, 'Room already has a patient'), 409);
-  }
-
-  const waiting = getWaitingTickets(ctx.clinicId);
-  if (waiting.length === 0) {
-    return c.json(createSuccessResponse({ message: 'No patients waiting', roomName: room.name }));
-  }
-
-  const nextTicket = waiting[0];
-  nextTicket.status = 'called';
-  nextTicket.assignedRoomId = room.id;
-  nextTicket.calledAt = new Date().toISOString();
-  nextTicket.updatedAt = new Date().toISOString();
-
-  room.currentTicketId = nextTicket.id;
-  room.status = 'occupied';
-  room.updatedAt = new Date().toISOString();
-
-  recalcPositions(ctx.clinicId);
-
-  return c.json(
-    createSuccessResponse({
-      ticketNumber: nextTicket.ticketNumber,
-      roomName: room.name,
-      roomId: room.id,
-      status: 'called',
-    }),
-  );
-});
-
-// POST /api/v1/staff/complete
-app.post('/api/v1/staff/complete', (c) => {
-  const ctx = getStaffContext(c);
-  if (!ctx) {
-    return c.json(createErrorResponse(ERROR_CODES.UNAUTHORIZED, 'Unauthorized'), 401);
-  }
-
-  const room = findRoomForStaff(ctx.staffId);
-  if (!room || !room.currentTicketId) {
-    return c.json(createErrorResponse(ERROR_CODES.NO_ACTIVE_ROOM, 'No active patient in room'), 404);
-  }
-
-  const ticket = Array.from(tickets.values()).find((t) => t.id === room.currentTicketId);
-  if (ticket) {
-    ticket.status = 'completed';
-    ticket.completedAt = new Date().toISOString();
-    ticket.updatedAt = new Date().toISOString();
-  }
-
-  room.currentTicketId = null;
-  room.status = 'open';
-  room.updatedAt = new Date().toISOString();
-
-  recalcPositions(ctx.clinicId);
-
-  return c.json(createSuccessResponse({ message: 'Patient completed', roomName: room.name }));
-});
-
-// POST /api/v1/staff/no-show
-app.post('/api/v1/staff/no-show', (c) => {
-  const ctx = getStaffContext(c);
-  if (!ctx) {
-    return c.json(createErrorResponse(ERROR_CODES.UNAUTHORIZED, 'Unauthorized'), 401);
-  }
-
-  const room = findRoomForStaff(ctx.staffId);
-  if (!room || !room.currentTicketId) {
-    return c.json(createErrorResponse(ERROR_CODES.NO_ACTIVE_ROOM, 'No active patient in room'), 404);
-  }
-
-  const ticket = Array.from(tickets.values()).find((t) => t.id === room.currentTicketId);
-  if (ticket) {
-    ticket.status = 'no_show';
-    ticket.completedAt = new Date().toISOString();
-    ticket.updatedAt = new Date().toISOString();
-  }
-
-  room.currentTicketId = null;
-  room.status = 'open';
-  room.updatedAt = new Date().toISOString();
-
-  recalcPositions(ctx.clinicId);
-
-  return c.json(createSuccessResponse({ message: 'Patient marked no-show', roomName: room.name }));
-});
-
-// POST /api/v1/staff/pause
-app.post('/api/v1/staff/pause', (c) => {
-  const ctx = getStaffContext(c);
-  if (!ctx) {
-    return c.json(createErrorResponse(ERROR_CODES.UNAUTHORIZED, 'Unauthorized'), 401);
-  }
-
-  const room = findRoomForStaff(ctx.staffId);
-  if (!room) {
-    return c.json(createErrorResponse(ERROR_CODES.NO_ACTIVE_ROOM, 'No room assigned'), 404);
-  }
-
-  room.status = 'paused';
-  room.updatedAt = new Date().toISOString();
-
-  return c.json(createSuccessResponse({ message: 'Room paused', roomName: room.name, status: room.status }));
-});
-
-// POST /api/v1/staff/resume
-app.post('/api/v1/staff/resume', (c) => {
-  const ctx = getStaffContext(c);
-  if (!ctx) {
-    return c.json(createErrorResponse(ERROR_CODES.UNAUTHORIZED, 'Unauthorized'), 401);
-  }
-
-  const room = findRoomForStaff(ctx.staffId);
-  if (!room) {
-    return c.json(createErrorResponse(ERROR_CODES.NO_ACTIVE_ROOM, 'No room assigned'), 404);
-  }
-
-  room.status = room.currentTicketId ? 'occupied' : 'open';
-  room.updatedAt = new Date().toISOString();
-
-  return c.json(createSuccessResponse({ message: 'Room resumed', roomName: room.name, status: room.status }));
-});
-
-// GET /api/v1/staff/room/status
-app.get('/api/v1/staff/room/status', (c) => {
-  const ctx = getStaffContext(c);
-  if (!ctx) {
-    return c.json(createErrorResponse(ERROR_CODES.UNAUTHORIZED, 'Unauthorized'), 401);
-  }
-
-  const room = findRoomForStaff(ctx.staffId);
-  if (!room) {
-    return c.json(createSuccessResponse({ assigned: false, room: null, currentTicket: null }));
-  }
-
-  let currentTicket = null;
-  if (room.currentTicketId) {
-    const ticket = Array.from(tickets.values()).find((t) => t.id === room.currentTicketId);
-    if (ticket) {
-      currentTicket = {
-        ticketNumber: ticket.ticketNumber,
-        status: ticket.status,
-        calledAt: ticket.calledAt,
+    // =====================================================================
+    // AUTH ROUTES — /api/v1/auth/*
+    // =====================================================================
+
+    // POST /api/v1/auth/login
+    if (method === 'POST' && pathname === '/api/v1/auth/login') {
+      await usersReady;
+
+      const body = await parseBody(req);
+      const parsed = loginSchema.safeParse(body);
+      if (!parsed.success) {
+        return res.status(400).json(createErrorResponse(ERROR_CODES.INVALID_INPUT, 'Invalid input', parsed.error.flatten()));
+      }
+
+      const { email, password } = parsed.data;
+      const user = demoUsers.find((u) => u.email === email.trim().toLowerCase());
+
+      if (!user) {
+        return res.status(401).json(createErrorResponse(ERROR_CODES.INVALID_CREDENTIALS, 'Invalid email or password'));
+      }
+
+      const valid = verifyPassword(user.passwordHash, password);
+      if (!valid) {
+        return res.status(401).json(createErrorResponse(ERROR_CODES.INVALID_CREDENTIALS, 'Invalid email or password'));
+      }
+
+      const accessToken = await createAccessToken(user);
+      const refreshToken = await createRefreshTokenJWT(user);
+      activeRefreshTokens.add(refreshToken);
+
+      return res.status(200).json(
+        createSuccessResponse({
+          accessToken,
+          refreshToken,
+          user: {
+            id: user.id,
+            role: user.role,
+            clinicId: user.clinicId,
+            organizationId: user.organizationId,
+            displayName: user.displayName,
+          },
+        }),
+      );
+    }
+
+    // POST /api/v1/auth/refresh
+    if (method === 'POST' && pathname === '/api/v1/auth/refresh') {
+      await usersReady;
+
+      const body = await parseBody(req);
+      const parsed = refreshTokenSchema.safeParse(body);
+      if (!parsed.success) {
+        return res.status(400).json(createErrorResponse(ERROR_CODES.INVALID_INPUT, 'Invalid input', parsed.error.flatten()));
+      }
+
+      const { refreshToken } = parsed.data;
+
+      if (!activeRefreshTokens.has(refreshToken)) {
+        return res.status(401).json(createErrorResponse(ERROR_CODES.INVALID_TOKEN, 'Invalid or revoked refresh token'));
+      }
+
+      try {
+        const { payload } = await jwtVerify(refreshToken, JWT_SECRET);
+        const userId = payload.userId;
+        const user = demoUsers.find((u) => u.id === userId);
+
+        if (!user) {
+          return res.status(401).json(createErrorResponse(ERROR_CODES.INVALID_TOKEN, 'User not found'));
+        }
+
+        // Rotate refresh token
+        activeRefreshTokens.delete(refreshToken);
+        const newAccessToken = await createAccessToken(user);
+        const newRefreshToken = await createRefreshTokenJWT(user);
+        activeRefreshTokens.add(newRefreshToken);
+
+        return res.status(200).json(
+          createSuccessResponse({
+            accessToken: newAccessToken,
+            refreshToken: newRefreshToken,
+          }),
+        );
+      } catch (_err) {
+        activeRefreshTokens.delete(refreshToken);
+        return res.status(401).json(createErrorResponse(ERROR_CODES.TOKEN_EXPIRED, 'Refresh token expired'));
+      }
+    }
+
+    // POST /api/v1/auth/logout
+    if (method === 'POST' && pathname === '/api/v1/auth/logout') {
+      const body = await parseBody(req);
+      const parsed = refreshTokenSchema.safeParse(body);
+
+      if (parsed.success) {
+        activeRefreshTokens.delete(parsed.data.refreshToken);
+      }
+
+      return res.status(200).json(createSuccessResponse({ message: 'Logged out' }));
+    }
+
+    // =====================================================================
+    // QUEUE ROUTES — /api/v1/queue/*
+    // =====================================================================
+
+    // POST /api/v1/queue/join
+    if (method === 'POST' && pathname === '/api/v1/queue/join') {
+      const body = await parseBody(req);
+      const parsed = joinQueueSchema.safeParse(body);
+      if (!parsed.success) {
+        return res.status(400).json(createErrorResponse(ERROR_CODES.INVALID_INPUT, 'Invalid input', parsed.error.flatten()));
+      }
+
+      const { clinicId, anonymousHash, language } = parsed.data;
+
+      // Check for duplicate hash (already in queue)
+      const existing = Array.from(tickets.values()).find(
+        (t) => t.clinicId === clinicId && t.anonymousHash === anonymousHash && t.status === 'waiting',
+      );
+      if (existing) {
+        return res.status(409).json(createErrorResponse(ERROR_CODES.ALREADY_IN_QUEUE, 'Already in queue'));
+      }
+
+      // Check queue capacity
+      const currentSize = getWaitingTickets(clinicId).length;
+      if (currentSize >= MAX_QUEUE_SIZE) {
+        return res.status(503).json(createErrorResponse(ERROR_CODES.QUEUE_FULL, 'Queue is full'));
+      }
+
+      const sessionToken = generateSessionToken();
+      const ticketNumber = nextTicketNumber++;
+      const position = currentSize + 1;
+      const estimatedWaitMinutes = Math.ceil((currentSize * DEFAULT_SERVICE_TIME_SECONDS) / 60);
+      const now = new Date().toISOString();
+
+      const ticket = {
+        id: crypto.randomUUID(),
+        organizationId: ORG_ID,
+        clinicId,
+        ticketNumber,
+        anonymousHash,
+        status: 'waiting',
+        priority: 0,
+        position,
+        assignedRoomId: null,
+        sessionToken,
+        estimatedWaitMinutes,
+        joinedAt: now,
+        calledAt: null,
+        completedAt: null,
+        language,
+        createdAt: now,
+        updatedAt: now,
       };
+
+      tickets.set(sessionToken, ticket);
+
+      return res.status(201).json(
+        createSuccessResponse({
+          sessionToken,
+          ticketNumber,
+          position,
+          estimatedWaitMinutes,
+        }),
+      );
     }
-  }
 
-  const waitingCount = getWaitingTickets(ctx.clinicId).length;
+    // GET /api/v1/queue/status/:sessionToken
+    match = pathname.match(/^\/api\/v1\/queue\/status\/([^/]+)$/);
+    if (method === 'GET' && match) {
+      const sessionToken = match[1];
+      const ticket = tickets.get(sessionToken);
 
-  return c.json(
-    createSuccessResponse({
-      assigned: true,
-      room: {
-        id: room.id,
-        name: room.name,
-        status: room.status,
-      },
-      currentTicket,
-      waitingCount,
-    }),
-  );
-});
+      if (!ticket) {
+        return res.status(404).json(createErrorResponse(ERROR_CODES.TICKET_NOT_FOUND, 'Ticket not found'));
+      }
 
-// ==========================================================================
-// ADMIN ROUTES — /api/v1/admin/*
-// ==========================================================================
+      const queueLength = getWaitingTickets(ticket.clinicId).length;
 
-// GET /api/v1/admin/dashboard
-app.get('/api/v1/admin/dashboard', (c) => {
-  const waiting = getWaitingTickets(CLINIC_ID);
-  const allTickets = Array.from(tickets.values()).filter((t) => t.clinicId === CLINIC_ID);
-  const roomList = Array.from(rooms.values()).filter((r) => r.clinicId === CLINIC_ID);
+      return res.status(200).json(
+        createSuccessResponse({
+          ticketNumber: ticket.ticketNumber,
+          position: ticket.position,
+          estimatedWaitMinutes: ticket.estimatedWaitMinutes ?? 0,
+          status: ticket.status,
+          queueLength,
+        }),
+      );
+    }
 
-  const completed = allTickets.filter((t) => t.status === 'completed').length;
-  const noShows = allTickets.filter((t) => t.status === 'no_show').length;
-  const activeRooms = roomList.filter((r) => r.isActive && r.status !== 'closed').length;
-  const occupiedRooms = roomList.filter((r) => r.status === 'occupied').length;
+    // POST /api/v1/queue/postpone/:sessionToken
+    match = pathname.match(/^\/api\/v1\/queue\/postpone\/([^/]+)$/);
+    if (method === 'POST' && match) {
+      const sessionToken = match[1];
+      const ticket = tickets.get(sessionToken);
 
-  return c.json(
-    createSuccessResponse({
-      clinicId: CLINIC_ID,
-      queueLength: waiting.length,
-      completedToday: completed,
-      noShowsToday: noShows,
-      totalRooms: roomList.length,
-      activeRooms,
-      occupiedRooms,
-      averageWaitMinutes: waiting.length > 0 ? Math.round(waiting.reduce((sum, t) => sum + (t.estimatedWaitMinutes ?? 0), 0) / waiting.length) : 0,
-    }),
-  );
-});
+      if (!ticket) {
+        return res.status(404).json(createErrorResponse(ERROR_CODES.TICKET_NOT_FOUND, 'Ticket not found'));
+      }
 
-// GET /api/v1/admin/queue
-app.get('/api/v1/admin/queue', (c) => {
-  const allTickets = Array.from(tickets.values())
-    .filter((t) => t.clinicId === CLINIC_ID)
-    .sort((a, b) => a.position - b.position);
+      if (ticket.status !== 'waiting') {
+        return res.status(400).json(createErrorResponse(ERROR_CODES.INVALID_INPUT, 'Ticket is not in waiting state'));
+      }
 
-  return c.json(
-    createSuccessResponse(
-      allTickets.map((t) => ({
-        id: t.id,
-        ticketNumber: t.ticketNumber,
-        status: t.status,
-        position: t.position,
-        estimatedWaitMinutes: t.estimatedWaitMinutes,
-        assignedRoomId: t.assignedRoomId,
-        joinedAt: t.joinedAt,
-        calledAt: t.calledAt,
-        language: t.language,
-      })),
-    ),
-  );
-});
+      const body = await parseBody(req);
+      const parsed = postponeSchema.safeParse(body);
+      if (!parsed.success) {
+        return res.status(400).json(createErrorResponse(ERROR_CODES.INVALID_INPUT, 'Invalid input', parsed.error.flatten()));
+      }
 
-// POST /api/v1/admin/rooms
-app.post('/api/v1/admin/rooms', async (c) => {
-  const body = await c.req.json().catch(() => null);
-  const parsed = createRoomSchema.safeParse(body);
-  if (!parsed.success) {
-    return c.json(createErrorResponse(ERROR_CODES.INVALID_INPUT, 'Invalid input', parsed.error.flatten()), 400);
-  }
+      const { positionsBack } = parsed.data;
+      const waiting = getWaitingTickets(ticket.clinicId);
+      const currentIdx = waiting.findIndex((t) => t.sessionToken === sessionToken);
 
-  const { clinicId, name, displayOrder } = parsed.data;
-  const id = crypto.randomUUID();
-  const roomNow = new Date().toISOString();
+      if (currentIdx === -1) {
+        return res.status(404).json(createErrorResponse(ERROR_CODES.TICKET_NOT_FOUND, 'Ticket not in waiting list'));
+      }
 
-  const room = {
-    id,
-    organizationId: ORG_ID,
-    clinicId,
-    name,
-    displayOrder,
-    status: 'open',
-    currentStaffId: null,
-    currentTicketId: null,
-    isActive: true,
-    createdAt: roomNow,
-    updatedAt: roomNow,
-  };
+      const newIdx = Math.min(currentIdx + positionsBack, waiting.length - 1);
 
-  rooms.set(id, room);
-  addAuditEntry('room.created', 'room', id);
+      // Move ticket in the array
+      waiting.splice(currentIdx, 1);
+      waiting.splice(newIdx, 0, ticket);
 
-  return c.json(createSuccessResponse(room), 201);
-});
+      // Recalculate all positions
+      recalcPositions(ticket.clinicId);
 
-// PUT /api/v1/admin/rooms/:roomId
-app.put('/api/v1/admin/rooms/:roomId', async (c) => {
-  const roomId = c.req.param('roomId');
-  const room = rooms.get(roomId);
-  if (!room) {
-    return c.json(createErrorResponse(ERROR_CODES.NOT_FOUND, 'Room not found'), 404);
-  }
+      return res.status(200).json(
+        createSuccessResponse({
+          ticketNumber: ticket.ticketNumber,
+          position: ticket.position,
+          estimatedWaitMinutes: ticket.estimatedWaitMinutes ?? 0,
+          status: ticket.status,
+        }),
+      );
+    }
 
-  const body = await c.req.json().catch(() => null);
-  const parsed = updateRoomSchema.safeParse(body);
-  if (!parsed.success) {
-    return c.json(createErrorResponse(ERROR_CODES.INVALID_INPUT, 'Invalid input', parsed.error.flatten()), 400);
-  }
+    // DELETE /api/v1/queue/leave/:sessionToken
+    match = pathname.match(/^\/api\/v1\/queue\/leave\/([^/]+)$/);
+    if (method === 'DELETE' && match) {
+      const sessionToken = match[1];
+      const ticket = tickets.get(sessionToken);
 
-  const updates = parsed.data;
-  if (updates.name !== undefined) room.name = updates.name;
-  if (updates.displayOrder !== undefined) room.displayOrder = updates.displayOrder;
-  if (updates.isActive !== undefined) room.isActive = updates.isActive;
-  room.updatedAt = new Date().toISOString();
+      if (!ticket) {
+        return res.status(404).json(createErrorResponse(ERROR_CODES.TICKET_NOT_FOUND, 'Ticket not found'));
+      }
 
-  addAuditEntry('room.updated', 'room', roomId);
+      ticket.status = 'cancelled';
+      ticket.completedAt = new Date().toISOString();
+      ticket.updatedAt = new Date().toISOString();
 
-  return c.json(createSuccessResponse(room));
-});
+      recalcPositions(ticket.clinicId);
 
-// DELETE /api/v1/admin/rooms/:roomId
-app.delete('/api/v1/admin/rooms/:roomId', (c) => {
-  const roomId = c.req.param('roomId');
-  const room = rooms.get(roomId);
-  if (!room) {
-    return c.json(createErrorResponse(ERROR_CODES.NOT_FOUND, 'Room not found'), 404);
-  }
+      return res.status(200).json(createSuccessResponse({ message: 'Left queue', ticketNumber: ticket.ticketNumber }));
+    }
 
-  rooms.delete(roomId);
-  addAuditEntry('room.deleted', 'room', roomId);
+    // =====================================================================
+    // STAFF ROUTES — /api/v1/staff/*
+    // =====================================================================
 
-  return c.json(createSuccessResponse({ message: 'Room deleted' }));
-});
+    // POST /api/v1/staff/ready
+    if (method === 'POST' && pathname === '/api/v1/staff/ready') {
+      const ctx = getStaffContext(req);
+      if (!ctx) {
+        return res.status(401).json(createErrorResponse(ERROR_CODES.UNAUTHORIZED, 'Unauthorized'));
+      }
 
-// GET /api/v1/admin/rooms
-app.get('/api/v1/admin/rooms', (c) => {
-  const roomList = Array.from(rooms.values())
-    .filter((r) => r.clinicId === CLINIC_ID)
-    .sort((a, b) => a.displayOrder - b.displayOrder);
+      const room = assignStaffToRoom(ctx.staffId);
+      if (!room) {
+        return res.status(404).json(createErrorResponse(ERROR_CODES.NO_ACTIVE_ROOM, 'No available room'));
+      }
 
-  return c.json(createSuccessResponse(roomList));
-});
+      if (room.currentTicketId) {
+        return res.status(409).json(createErrorResponse(ERROR_CODES.ROOM_NOT_AVAILABLE, 'Room already has a patient'));
+      }
 
-// GET /api/v1/admin/staff
-app.get('/api/v1/admin/staff', (c) => {
-  const staffList = Array.from(staffStore.values()).filter((s) => s.clinicId === CLINIC_ID);
-  return c.json(createSuccessResponse(staffList));
-});
+      const waiting = getWaitingTickets(ctx.clinicId);
+      if (waiting.length === 0) {
+        return res.status(200).json(createSuccessResponse({ message: 'No patients waiting', roomName: room.name }));
+      }
 
-// POST /api/v1/admin/staff
-app.post('/api/v1/admin/staff', async (c) => {
-  const body = await c.req.json().catch(() => null);
-  const parsed = createUserSchema.safeParse(body);
-  if (!parsed.success) {
-    return c.json(createErrorResponse(ERROR_CODES.INVALID_INPUT, 'Invalid input', parsed.error.flatten()), 400);
-  }
+      const nextTicket = waiting[0];
+      nextTicket.status = 'called';
+      nextTicket.assignedRoomId = room.id;
+      nextTicket.calledAt = new Date().toISOString();
+      nextTicket.updatedAt = new Date().toISOString();
 
-  const { organizationId, clinicId, email, displayName, role } = parsed.data;
-  const id = crypto.randomUUID();
-  const createNow = new Date().toISOString();
+      room.currentTicketId = nextTicket.id;
+      room.status = 'occupied';
+      room.updatedAt = new Date().toISOString();
 
-  const staff = {
-    id,
-    organizationId,
-    clinicId: clinicId ?? null,
-    email,
-    displayName,
-    role,
-    isActive: true,
-    createdAt: createNow,
-    updatedAt: createNow,
-  };
+      recalcPositions(ctx.clinicId);
 
-  staffStore.set(id, staff);
-  addAuditEntry('staff.created', 'user', id);
+      return res.status(200).json(
+        createSuccessResponse({
+          ticketNumber: nextTicket.ticketNumber,
+          roomName: room.name,
+          roomId: room.id,
+          status: 'called',
+        }),
+      );
+    }
 
-  return c.json(createSuccessResponse(staff), 201);
-});
+    // POST /api/v1/staff/complete
+    if (method === 'POST' && pathname === '/api/v1/staff/complete') {
+      const ctx = getStaffContext(req);
+      if (!ctx) {
+        return res.status(401).json(createErrorResponse(ERROR_CODES.UNAUTHORIZED, 'Unauthorized'));
+      }
 
-// PUT /api/v1/admin/staff/:userId
-app.put('/api/v1/admin/staff/:userId', async (c) => {
-  const userId = c.req.param('userId');
-  const staff = staffStore.get(userId);
-  if (!staff) {
-    return c.json(createErrorResponse(ERROR_CODES.NOT_FOUND, 'Staff member not found'), 404);
-  }
+      const room = findRoomForStaff(ctx.staffId);
+      if (!room || !room.currentTicketId) {
+        return res.status(404).json(createErrorResponse(ERROR_CODES.NO_ACTIVE_ROOM, 'No active patient in room'));
+      }
 
-  const body = await c.req.json().catch(() => null);
-  const parsed = updateUserSchema.safeParse(body);
-  if (!parsed.success) {
-    return c.json(createErrorResponse(ERROR_CODES.INVALID_INPUT, 'Invalid input', parsed.error.flatten()), 400);
-  }
+      const ticket = Array.from(tickets.values()).find((t) => t.id === room.currentTicketId);
+      if (ticket) {
+        ticket.status = 'completed';
+        ticket.completedAt = new Date().toISOString();
+        ticket.updatedAt = new Date().toISOString();
+      }
 
-  const updates = parsed.data;
-  if (updates.email !== undefined) staff.email = updates.email;
-  if (updates.displayName !== undefined) staff.displayName = updates.displayName;
-  if (updates.role !== undefined) staff.role = updates.role;
-  if (updates.isActive !== undefined) staff.isActive = updates.isActive;
-  staff.updatedAt = new Date().toISOString();
+      room.currentTicketId = null;
+      room.status = 'open';
+      room.updatedAt = new Date().toISOString();
 
-  addAuditEntry('staff.updated', 'user', userId);
+      recalcPositions(ctx.clinicId);
 
-  return c.json(createSuccessResponse(staff));
-});
+      return res.status(200).json(createSuccessResponse({ message: 'Patient completed', roomName: room.name }));
+    }
 
-// DELETE /api/v1/admin/staff/:userId
-app.delete('/api/v1/admin/staff/:userId', (c) => {
-  const userId = c.req.param('userId');
-  const staff = staffStore.get(userId);
-  if (!staff) {
-    return c.json(createErrorResponse(ERROR_CODES.NOT_FOUND, 'Staff member not found'), 404);
-  }
+    // POST /api/v1/staff/no-show
+    if (method === 'POST' && pathname === '/api/v1/staff/no-show') {
+      const ctx = getStaffContext(req);
+      if (!ctx) {
+        return res.status(401).json(createErrorResponse(ERROR_CODES.UNAUTHORIZED, 'Unauthorized'));
+      }
 
-  staff.isActive = false;
-  staff.updatedAt = new Date().toISOString();
-  addAuditEntry('staff.deactivated', 'user', userId);
+      const room = findRoomForStaff(ctx.staffId);
+      if (!room || !room.currentTicketId) {
+        return res.status(404).json(createErrorResponse(ERROR_CODES.NO_ACTIVE_ROOM, 'No active patient in room'));
+      }
 
-  return c.json(createSuccessResponse({ message: 'Staff member deactivated' }));
-});
+      const ticket = Array.from(tickets.values()).find((t) => t.id === room.currentTicketId);
+      if (ticket) {
+        ticket.status = 'no_show';
+        ticket.completedAt = new Date().toISOString();
+        ticket.updatedAt = new Date().toISOString();
+      }
 
-// GET /api/v1/admin/audit-log
-app.get('/api/v1/admin/audit-log', (c) => {
-  const query = paginationSchema.safeParse({
-    page: c.req.query('page'),
-    pageSize: c.req.query('pageSize'),
-  });
+      room.currentTicketId = null;
+      room.status = 'open';
+      room.updatedAt = new Date().toISOString();
 
-  const page = query.success ? query.data.page : 1;
-  const pageSize = query.success ? query.data.pageSize : 20;
+      recalcPositions(ctx.clinicId);
 
-  const filtered = auditLog
-    .filter((e) => e.clinicId === CLINIC_ID)
-    .sort((a, b) => b.timestamp.localeCompare(a.timestamp));
+      return res.status(200).json(createSuccessResponse({ message: 'Patient marked no-show', roomName: room.name }));
+    }
 
-  const total = filtered.length;
-  const totalPages = Math.ceil(total / pageSize);
-  const paginated = filtered.slice((page - 1) * pageSize, page * pageSize);
+    // POST /api/v1/staff/pause
+    if (method === 'POST' && pathname === '/api/v1/staff/pause') {
+      const ctx = getStaffContext(req);
+      if (!ctx) {
+        return res.status(401).json(createErrorResponse(ERROR_CODES.UNAUTHORIZED, 'Unauthorized'));
+      }
 
-  return c.json(
-    createSuccessResponse(paginated, {
-      pagination: { page, pageSize, total, totalPages },
-    }),
-  );
-});
+      const room = findRoomForStaff(ctx.staffId);
+      if (!room) {
+        return res.status(404).json(createErrorResponse(ERROR_CODES.NO_ACTIVE_ROOM, 'No room assigned'));
+      }
 
-// ==========================================================================
-// PUBLIC ROUTES — /api/v1/*
-// ==========================================================================
+      room.status = 'paused';
+      room.updatedAt = new Date().toISOString();
 
-// GET /api/v1/display/:clinicSlug
-app.get('/api/v1/display/:clinicSlug', (c) => {
-  const slug = c.req.param('clinicSlug');
-  const clinic = clinics.get(slug);
+      return res.status(200).json(createSuccessResponse({ message: 'Room paused', roomName: room.name, status: room.status }));
+    }
 
-  if (!clinic) {
-    return c.json(createErrorResponse(ERROR_CODES.CLINIC_NOT_FOUND, 'Clinic not found'), 404);
-  }
+    // POST /api/v1/staff/resume
+    if (method === 'POST' && pathname === '/api/v1/staff/resume') {
+      const ctx = getStaffContext(req);
+      if (!ctx) {
+        return res.status(401).json(createErrorResponse(ERROR_CODES.UNAUTHORIZED, 'Unauthorized'));
+      }
 
-  const waiting = getWaitingTickets(clinic.id);
-  const roomList = Array.from(rooms.values())
-    .filter((r) => r.clinicId === clinic.id && r.isActive)
-    .sort((a, b) => a.displayOrder - b.displayOrder);
+      const room = findRoomForStaff(ctx.staffId);
+      if (!room) {
+        return res.status(404).json(createErrorResponse(ERROR_CODES.NO_ACTIVE_ROOM, 'No room assigned'));
+      }
 
-  // Build display data — only expose non-sensitive information
-  const calledTickets = Array.from(tickets.values())
-    .filter((t) => t.clinicId === clinic.id && (t.status === 'called' || t.status === 'in_progress'))
-    .map((t) => ({
-      ticketNumber: t.ticketNumber,
-      roomName: roomList.find((r) => r.id === t.assignedRoomId)?.name ?? null,
-      status: t.status,
-    }));
+      room.status = room.currentTicketId ? 'occupied' : 'open';
+      room.updatedAt = new Date().toISOString();
 
-  return c.json(
-    createSuccessResponse({
-      clinicName: clinic.name,
-      clinicSlug: clinic.slug,
-      queueLength: waiting.length,
-      rooms: roomList.map((r) => ({
-        name: r.name,
-        status: r.status,
-        displayOrder: r.displayOrder,
-      })),
-      calledTickets,
-      nextTicketNumbers: waiting.slice(0, 5).map((t) => t.ticketNumber),
-    }),
-  );
-});
+      return res.status(200).json(createSuccessResponse({ message: 'Room resumed', roomName: room.name, status: room.status }));
+    }
 
-// GET /api/v1/clinic/:clinicSlug/info
-app.get('/api/v1/clinic/:clinicSlug/info', (c) => {
-  const slug = c.req.param('clinicSlug');
-  const clinic = clinics.get(slug);
+    // GET /api/v1/staff/room/status
+    if (method === 'GET' && pathname === '/api/v1/staff/room/status') {
+      const ctx = getStaffContext(req);
+      if (!ctx) {
+        return res.status(401).json(createErrorResponse(ERROR_CODES.UNAUTHORIZED, 'Unauthorized'));
+      }
 
-  if (!clinic) {
-    return c.json(createErrorResponse(ERROR_CODES.CLINIC_NOT_FOUND, 'Clinic not found'), 404);
-  }
+      const room = findRoomForStaff(ctx.staffId);
+      if (!room) {
+        return res.status(200).json(createSuccessResponse({ assigned: false, room: null, currentTicket: null }));
+      }
 
-  return c.json(
-    createSuccessResponse({
-      id: clinic.id,
-      name: clinic.name,
-      slug: clinic.slug,
-      address: clinic.address,
-      timezone: clinic.timezone,
-      defaultLanguage: clinic.defaultLanguage,
-      isActive: clinic.isActive,
-    }),
-  );
-});
+      let currentTicket = null;
+      if (room.currentTicketId) {
+        const ticket = Array.from(tickets.values()).find((t) => t.id === room.currentTicketId);
+        if (ticket) {
+          currentTicket = {
+            ticketNumber: ticket.ticketNumber,
+            status: ticket.status,
+            calledAt: ticket.calledAt,
+          };
+        }
+      }
 
-// ==========================================================================
-// SYSTEM ROUTES — /api/v1/system/*
-// ==========================================================================
+      const waitingCount = getWaitingTickets(ctx.clinicId).length;
 
-// POST /api/v1/system/auth/login — SuperAdmin login
-app.post('/api/v1/system/auth/login', async (c) => {
-  await superAdminsReady;
+      return res.status(200).json(
+        createSuccessResponse({
+          assigned: true,
+          room: {
+            id: room.id,
+            name: room.name,
+            status: room.status,
+          },
+          currentTicket,
+          waitingCount,
+        }),
+      );
+    }
 
-  const body = await c.req.json().catch(() => null);
-  const parsed = superAdminLoginSchema.safeParse(body);
-  if (!parsed.success) {
-    return c.json(createErrorResponse(ERROR_CODES.INVALID_INPUT, 'Invalid input', parsed.error.flatten()), 400);
-  }
+    // =====================================================================
+    // ADMIN ROUTES — /api/v1/admin/*
+    // =====================================================================
 
-  const { email, password, totpCode } = parsed.data;
-  const admin = superAdmins.find((a) => a.email === email && a.isActive);
+    // GET /api/v1/admin/dashboard
+    if (method === 'GET' && pathname === '/api/v1/admin/dashboard') {
+      const waiting = getWaitingTickets(CLINIC_ID);
+      const allTickets = Array.from(tickets.values()).filter((t) => t.clinicId === CLINIC_ID);
+      const roomList = Array.from(rooms.values()).filter((r) => r.clinicId === CLINIC_ID);
 
-  if (!admin) {
-    return c.json(createErrorResponse(ERROR_CODES.INVALID_CREDENTIALS, 'Invalid credentials'), 401);
-  }
+      const completed = allTickets.filter((t) => t.status === 'completed').length;
+      const noShows = allTickets.filter((t) => t.status === 'no_show').length;
+      const activeRooms = roomList.filter((r) => r.isActive && r.status !== 'closed').length;
+      const occupiedRooms = roomList.filter((r) => r.status === 'occupied').length;
 
-  const validPassword = verifyPassword(admin.passwordHash, password);
-  if (!validPassword) {
-    return c.json(createErrorResponse(ERROR_CODES.INVALID_CREDENTIALS, 'Invalid credentials'), 401);
-  }
+      return res.status(200).json(
+        createSuccessResponse({
+          clinicId: CLINIC_ID,
+          queueLength: waiting.length,
+          completedToday: completed,
+          noShowsToday: noShows,
+          totalRooms: roomList.length,
+          activeRooms,
+          occupiedRooms,
+          averageWaitMinutes: waiting.length > 0 ? Math.round(waiting.reduce((sum, t) => sum + (t.estimatedWaitMinutes ?? 0), 0) / waiting.length) : 0,
+        }),
+      );
+    }
 
-  // Simplified TOTP check — accept any valid 6-digit code for demo
-  if (!/^\d{6}$/.test(totpCode)) {
-    return c.json(createErrorResponse(ERROR_CODES.INVALID_CREDENTIALS, 'Invalid TOTP code'), 401);
-  }
+    // GET /api/v1/admin/queue
+    if (method === 'GET' && pathname === '/api/v1/admin/queue') {
+      const allTickets = Array.from(tickets.values())
+        .filter((t) => t.clinicId === CLINIC_ID)
+        .sort((a, b) => a.position - b.position);
 
-  const accessToken = await new SignJWT({
-    userId: admin.id,
-    role: 'superadmin',
-  })
-    .setProtectedHeader({ alg: 'HS256' })
-    .setIssuedAt()
-    .setExpirationTime(ACCESS_TOKEN_EXPIRY)
-    .sign(JWT_SECRET);
+      return res.status(200).json(
+        createSuccessResponse(
+          allTickets.map((t) => ({
+            id: t.id,
+            ticketNumber: t.ticketNumber,
+            status: t.status,
+            position: t.position,
+            estimatedWaitMinutes: t.estimatedWaitMinutes,
+            assignedRoomId: t.assignedRoomId,
+            joinedAt: t.joinedAt,
+            calledAt: t.calledAt,
+            language: t.language,
+          })),
+        ),
+      );
+    }
 
-  return c.json(
-    createSuccessResponse({
-      accessToken,
-      user: {
-        id: admin.id,
-        email: admin.email,
+    // POST /api/v1/admin/rooms
+    if (method === 'POST' && pathname === '/api/v1/admin/rooms') {
+      const body = await parseBody(req);
+      const parsed = createRoomSchema.safeParse(body);
+      if (!parsed.success) {
+        return res.status(400).json(createErrorResponse(ERROR_CODES.INVALID_INPUT, 'Invalid input', parsed.error.flatten()));
+      }
+
+      const { clinicId, name, displayOrder } = parsed.data;
+      const id = crypto.randomUUID();
+      const roomNow = new Date().toISOString();
+
+      const room = {
+        id,
+        organizationId: ORG_ID,
+        clinicId,
+        name,
+        displayOrder,
+        status: 'open',
+        currentStaffId: null,
+        currentTicketId: null,
+        isActive: true,
+        createdAt: roomNow,
+        updatedAt: roomNow,
+      };
+
+      rooms.set(id, room);
+      addAuditEntry('room.created', 'room', id);
+
+      return res.status(201).json(createSuccessResponse(room));
+    }
+
+    // GET /api/v1/admin/rooms
+    if (method === 'GET' && pathname === '/api/v1/admin/rooms') {
+      const roomList = Array.from(rooms.values())
+        .filter((r) => r.clinicId === CLINIC_ID)
+        .sort((a, b) => a.displayOrder - b.displayOrder);
+
+      return res.status(200).json(createSuccessResponse(roomList));
+    }
+
+    // PUT /api/v1/admin/rooms/:roomId
+    match = pathname.match(/^\/api\/v1\/admin\/rooms\/([^/]+)$/);
+    if (method === 'PUT' && match) {
+      const roomId = match[1];
+      const room = rooms.get(roomId);
+      if (!room) {
+        return res.status(404).json(createErrorResponse(ERROR_CODES.NOT_FOUND, 'Room not found'));
+      }
+
+      const body = await parseBody(req);
+      const parsed = updateRoomSchema.safeParse(body);
+      if (!parsed.success) {
+        return res.status(400).json(createErrorResponse(ERROR_CODES.INVALID_INPUT, 'Invalid input', parsed.error.flatten()));
+      }
+
+      const updates = parsed.data;
+      if (updates.name !== undefined) room.name = updates.name;
+      if (updates.displayOrder !== undefined) room.displayOrder = updates.displayOrder;
+      if (updates.isActive !== undefined) room.isActive = updates.isActive;
+      room.updatedAt = new Date().toISOString();
+
+      addAuditEntry('room.updated', 'room', roomId);
+
+      return res.status(200).json(createSuccessResponse(room));
+    }
+
+    // DELETE /api/v1/admin/rooms/:roomId
+    match = pathname.match(/^\/api\/v1\/admin\/rooms\/([^/]+)$/);
+    if (method === 'DELETE' && match) {
+      const roomId = match[1];
+      const room = rooms.get(roomId);
+      if (!room) {
+        return res.status(404).json(createErrorResponse(ERROR_CODES.NOT_FOUND, 'Room not found'));
+      }
+
+      rooms.delete(roomId);
+      addAuditEntry('room.deleted', 'room', roomId);
+
+      return res.status(200).json(createSuccessResponse({ message: 'Room deleted' }));
+    }
+
+    // GET /api/v1/admin/staff
+    if (method === 'GET' && pathname === '/api/v1/admin/staff') {
+      const staffList = Array.from(staffStore.values()).filter((s) => s.clinicId === CLINIC_ID);
+      return res.status(200).json(createSuccessResponse(staffList));
+    }
+
+    // POST /api/v1/admin/staff
+    if (method === 'POST' && pathname === '/api/v1/admin/staff') {
+      const body = await parseBody(req);
+      const parsed = createUserSchema.safeParse(body);
+      if (!parsed.success) {
+        return res.status(400).json(createErrorResponse(ERROR_CODES.INVALID_INPUT, 'Invalid input', parsed.error.flatten()));
+      }
+
+      const { organizationId, clinicId, email, displayName, role } = parsed.data;
+      const id = crypto.randomUUID();
+      const createNow = new Date().toISOString();
+
+      const staff = {
+        id,
+        organizationId,
+        clinicId: clinicId ?? null,
+        email,
+        displayName,
+        role,
+        isActive: true,
+        createdAt: createNow,
+        updatedAt: createNow,
+      };
+
+      staffStore.set(id, staff);
+      addAuditEntry('staff.created', 'user', id);
+
+      return res.status(201).json(createSuccessResponse(staff));
+    }
+
+    // PUT /api/v1/admin/staff/:userId
+    match = pathname.match(/^\/api\/v1\/admin\/staff\/([^/]+)$/);
+    if (method === 'PUT' && match) {
+      const userId = match[1];
+      const staff = staffStore.get(userId);
+      if (!staff) {
+        return res.status(404).json(createErrorResponse(ERROR_CODES.NOT_FOUND, 'Staff member not found'));
+      }
+
+      const body = await parseBody(req);
+      const parsed = updateUserSchema.safeParse(body);
+      if (!parsed.success) {
+        return res.status(400).json(createErrorResponse(ERROR_CODES.INVALID_INPUT, 'Invalid input', parsed.error.flatten()));
+      }
+
+      const updates = parsed.data;
+      if (updates.email !== undefined) staff.email = updates.email;
+      if (updates.displayName !== undefined) staff.displayName = updates.displayName;
+      if (updates.role !== undefined) staff.role = updates.role;
+      if (updates.isActive !== undefined) staff.isActive = updates.isActive;
+      staff.updatedAt = new Date().toISOString();
+
+      addAuditEntry('staff.updated', 'user', userId);
+
+      return res.status(200).json(createSuccessResponse(staff));
+    }
+
+    // DELETE /api/v1/admin/staff/:userId
+    match = pathname.match(/^\/api\/v1\/admin\/staff\/([^/]+)$/);
+    if (method === 'DELETE' && match) {
+      const userId = match[1];
+      const staff = staffStore.get(userId);
+      if (!staff) {
+        return res.status(404).json(createErrorResponse(ERROR_CODES.NOT_FOUND, 'Staff member not found'));
+      }
+
+      staff.isActive = false;
+      staff.updatedAt = new Date().toISOString();
+      addAuditEntry('staff.deactivated', 'user', userId);
+
+      return res.status(200).json(createSuccessResponse({ message: 'Staff member deactivated' }));
+    }
+
+    // GET /api/v1/admin/audit-log
+    if (method === 'GET' && pathname === '/api/v1/admin/audit-log') {
+      const queryParams = getQueryParams(url);
+      const query = paginationSchema.safeParse({
+        page: queryParams.page,
+        pageSize: queryParams.pageSize,
+      });
+
+      const page = query.success ? query.data.page : 1;
+      const pageSize = query.success ? query.data.pageSize : 20;
+
+      const filtered = auditLog
+        .filter((e) => e.clinicId === CLINIC_ID)
+        .sort((a, b) => b.timestamp.localeCompare(a.timestamp));
+
+      const total = filtered.length;
+      const totalPages = Math.ceil(total / pageSize);
+      const paginated = filtered.slice((page - 1) * pageSize, page * pageSize);
+
+      return res.status(200).json(
+        createSuccessResponse(paginated, {
+          pagination: { page, pageSize, total, totalPages },
+        }),
+      );
+    }
+
+    // =====================================================================
+    // PUBLIC ROUTES — /api/v1/*
+    // =====================================================================
+
+    // GET /api/v1/display/:clinicSlug
+    match = pathname.match(/^\/api\/v1\/display\/([^/]+)$/);
+    if (method === 'GET' && match) {
+      const slug = match[1];
+      const clinic = clinics.get(slug);
+
+      if (!clinic) {
+        return res.status(404).json(createErrorResponse(ERROR_CODES.CLINIC_NOT_FOUND, 'Clinic not found'));
+      }
+
+      const waiting = getWaitingTickets(clinic.id);
+      const roomList = Array.from(rooms.values())
+        .filter((r) => r.clinicId === clinic.id && r.isActive)
+        .sort((a, b) => a.displayOrder - b.displayOrder);
+
+      // Build display data — only expose non-sensitive information
+      const calledTickets = Array.from(tickets.values())
+        .filter((t) => t.clinicId === clinic.id && (t.status === 'called' || t.status === 'in_progress'))
+        .map((t) => ({
+          ticketNumber: t.ticketNumber,
+          roomName: roomList.find((r) => r.id === t.assignedRoomId)?.name ?? null,
+          status: t.status,
+        }));
+
+      return res.status(200).json(
+        createSuccessResponse({
+          clinicName: clinic.name,
+          clinicSlug: clinic.slug,
+          queueLength: waiting.length,
+          rooms: roomList.map((r) => ({
+            name: r.name,
+            status: r.status,
+            displayOrder: r.displayOrder,
+          })),
+          calledTickets,
+          nextTicketNumbers: waiting.slice(0, 5).map((t) => t.ticketNumber),
+        }),
+      );
+    }
+
+    // GET /api/v1/clinic/:clinicSlug/info
+    match = pathname.match(/^\/api\/v1\/clinic\/([^/]+)\/info$/);
+    if (method === 'GET' && match) {
+      const slug = match[1];
+      const clinic = clinics.get(slug);
+
+      if (!clinic) {
+        return res.status(404).json(createErrorResponse(ERROR_CODES.CLINIC_NOT_FOUND, 'Clinic not found'));
+      }
+
+      return res.status(200).json(
+        createSuccessResponse({
+          id: clinic.id,
+          name: clinic.name,
+          slug: clinic.slug,
+          address: clinic.address,
+          timezone: clinic.timezone,
+          defaultLanguage: clinic.defaultLanguage,
+          isActive: clinic.isActive,
+        }),
+      );
+    }
+
+    // =====================================================================
+    // SYSTEM ROUTES — /api/v1/system/*
+    // =====================================================================
+
+    // POST /api/v1/system/auth/login — SuperAdmin login
+    if (method === 'POST' && pathname === '/api/v1/system/auth/login') {
+      await superAdminsReady;
+
+      const body = await parseBody(req);
+      const parsed = superAdminLoginSchema.safeParse(body);
+      if (!parsed.success) {
+        return res.status(400).json(createErrorResponse(ERROR_CODES.INVALID_INPUT, 'Invalid input', parsed.error.flatten()));
+      }
+
+      const { email, password, totpCode } = parsed.data;
+      const admin = superAdmins.find((a) => a.email === email && a.isActive);
+
+      if (!admin) {
+        return res.status(401).json(createErrorResponse(ERROR_CODES.INVALID_CREDENTIALS, 'Invalid credentials'));
+      }
+
+      const validPassword = verifyPassword(admin.passwordHash, password);
+      if (!validPassword) {
+        return res.status(401).json(createErrorResponse(ERROR_CODES.INVALID_CREDENTIALS, 'Invalid credentials'));
+      }
+
+      // Simplified TOTP check — accept any valid 6-digit code for demo
+      if (!/^\d{6}$/.test(totpCode)) {
+        return res.status(401).json(createErrorResponse(ERROR_CODES.INVALID_CREDENTIALS, 'Invalid TOTP code'));
+      }
+
+      const accessToken = await new SignJWT({
+        userId: admin.id,
         role: 'superadmin',
-      },
-    }),
-  );
-});
+      })
+        .setProtectedHeader({ alg: 'HS256' })
+        .setIssuedAt()
+        .setExpirationTime(ACCESS_TOKEN_EXPIRY)
+        .sign(JWT_SECRET);
 
-// GET /api/v1/system/organizations
-app.get('/api/v1/system/organizations', (c) => {
-  const orgList = Array.from(organizations.values());
-  return c.json(createSuccessResponse(orgList));
-});
+      return res.status(200).json(
+        createSuccessResponse({
+          accessToken,
+          user: {
+            id: admin.id,
+            email: admin.email,
+            role: 'superadmin',
+          },
+        }),
+      );
+    }
 
-// GET /api/v1/system/health
-app.get('/api/v1/system/health', (c) => {
-  return c.json(
-    createSuccessResponse({
-      status: 'ok',
-      timestamp: new Date().toISOString(),
-      version: '0.0.1',
-      uptime: process.uptime(),
-      memoryUsage: process.memoryUsage(),
-    }),
-  );
-});
+    // GET /api/v1/system/organizations
+    if (method === 'GET' && pathname === '/api/v1/system/organizations') {
+      const orgList = Array.from(organizations.values());
+      return res.status(200).json(createSuccessResponse(orgList));
+    }
 
-// ==========================================================================
-// EXPORT — Vercel serverless handler
-// ==========================================================================
+    // GET /api/v1/system/health
+    if (method === 'GET' && pathname === '/api/v1/system/health') {
+      return res.status(200).json(
+        createSuccessResponse({
+          status: 'ok',
+          timestamp: new Date().toISOString(),
+          version: '0.0.1',
+          uptime: process.uptime(),
+          memoryUsage: process.memoryUsage(),
+        }),
+      );
+    }
 
-module.exports = handle(app);
+    // =====================================================================
+    // 404 — No route matched
+    // =====================================================================
+    return res.status(404).json(createErrorResponse(ERROR_CODES.NOT_FOUND, 'Not found'));
+
+  } catch (err) {
+    return res.status(500).json(createErrorResponse(ERROR_CODES.INTERNAL_ERROR, err.message));
+  }
+};
