@@ -1,10 +1,12 @@
-import { Hono } from 'hono';
-import { handle } from 'hono/vercel';
+export default function handler(req: Request): Response {
+  const url = new URL(req.url);
 
-const app = new Hono().basePath('/api/v1');
+  if (url.pathname === '/api/v1/health' || url.pathname.endsWith('/health')) {
+    return Response.json({
+      success: true,
+      data: { status: 'ok', timestamp: new Date().toISOString(), path: url.pathname }
+    });
+  }
 
-app.get('/health', (c) => {
-  return c.json({ success: true, data: { status: 'ok', timestamp: new Date().toISOString() } });
-});
-
-export default handle(app);
+  return Response.json({ success: false, error: { code: 'NOT_FOUND', message: 'Not found' } }, { status: 404 });
+}
