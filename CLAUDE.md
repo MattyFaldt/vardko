@@ -24,6 +24,14 @@ VårdKö is a multi-tenant healthcare queue management system for Swedish clinic
 8. **SuperAdmin is invisible** — no regular API endpoint reveals its existence.
 9. **ALL sensitive config** via environment variables — never in code.
 
+## Development Rules (NON-NEGOTIABLE)
+10. **FULL IMPLEMENTATION ONLY** — No stubs, placeholders, TODOs, mock data, or demo versions. Every function must be production-ready the first time. If a dependency is missing, build it first.
+11. **ZERO TEST DATA** — Never insert seed data, demo users, or fake records. The system starts empty. Data enters only through user actions. Schema-only seeds are OK.
+12. **END-TO-END VERIFICATION** — Every UI function must be traced: button → handler → API → DB → response → UI update. Write a Playwright E2E test for every flow. Never mark a feature done until verified.
+13. **EVERY FUNCTION NEEDS AN API ENDPOINT** — If a user can do it in the UI, it must be available via documented REST API. Same endpoint for UI and external consumers. No internal-only routes.
+14. **SHARED SERVICE LAYER** — All business logic in `apps/api/src/services/`. Route handlers are thin (validate → call service → respond). React components are thin (call API → render). UI and API share the same logic.
+15. **SECURITY OVERRIDES ALL** — If any dev rule conflicts with security requirements (encryption, GDPR, zero PII, audit trail, tenant isolation, OWASP), security wins.
+
 ## Code Style
 - Use `const` by default, `let` only when reassignment is needed
 - Prefer early returns over nested if/else
