@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import {
   Filter,
   Calendar,
@@ -10,10 +10,13 @@ import {
   UserPlus,
   Settings,
   ChevronDown,
+  Loader2,
 } from 'lucide-react';
+import { useAuth } from '../../lib/auth-context';
+import { getAuditLogApi } from '../../lib/api-client';
 
 /* ---------------------------------------------------------------------------
-   Types & mock data
+   Types
    --------------------------------------------------------------------------- */
 
 interface AuditEntry {
@@ -56,34 +59,6 @@ const ACTION_ICON: Record<string, React.ElementType> = {
   'settings.updated': Settings,
 };
 
-function generateMockEntries(): AuditEntry[] {
-  const entries: AuditEntry[] = [
-    { id: '1', timestamp: '2026-03-20 08:02', actor: 'Patient #A012', actorRole: 'patient', action: 'queue.join', resource: 'queue_ticket', details: 'Kölapp #A012 skapad' },
-    { id: '2', timestamp: '2026-03-20 08:05', actor: 'Anna Svensson', actorRole: 'staff', action: 'room.opened', resource: 'room', details: 'Rum 1 öppnat' },
-    { id: '3', timestamp: '2026-03-20 08:07', actor: 'Patient #A013', actorRole: 'patient', action: 'queue.join', resource: 'queue_ticket', details: 'Kölapp #A013 skapad' },
-    { id: '4', timestamp: '2026-03-20 08:12', actor: 'Anna Svensson', actorRole: 'staff', action: 'patient.called', resource: 'queue_ticket', details: 'Patient #A012 kallad till Rum 1' },
-    { id: '5', timestamp: '2026-03-20 08:15', actor: 'Erik Lindqvist', actorRole: 'staff', action: 'room.opened', resource: 'room', details: 'Rum 2 öppnat' },
-    { id: '6', timestamp: '2026-03-20 08:20', actor: 'Erik Lindqvist', actorRole: 'staff', action: 'patient.called', resource: 'queue_ticket', details: 'Patient #A013 kallad till Rum 2' },
-    { id: '7', timestamp: '2026-03-20 08:30', actor: 'Anna Svensson', actorRole: 'staff', action: 'patient.completed', resource: 'queue_ticket', details: 'Patient #A012 klar i Rum 1' },
-    { id: '8', timestamp: '2026-03-20 08:35', actor: 'Patient #A014', actorRole: 'patient', action: 'queue.join', resource: 'queue_ticket', details: 'Kölapp #A014 skapad' },
-    { id: '9', timestamp: '2026-03-20 08:40', actor: 'Anna Svensson', actorRole: 'staff', action: 'room.paused', resource: 'room', details: 'Rum 1 pausat — rast' },
-    { id: '10', timestamp: '2026-03-20 08:45', actor: 'Erik Lindqvist', actorRole: 'staff', action: 'patient.completed', resource: 'queue_ticket', details: 'Patient #A013 klar i Rum 2' },
-    { id: '11', timestamp: '2026-03-20 08:50', actor: 'Maria Johansson', actorRole: 'admin', action: 'user.created', resource: 'user', details: 'Användare karl.berg@klinik.se skapad' },
-    { id: '12', timestamp: '2026-03-20 09:00', actor: 'Anna Svensson', actorRole: 'staff', action: 'room.opened', resource: 'room', details: 'Rum 1 öppnat igen' },
-    { id: '13', timestamp: '2026-03-20 09:05', actor: 'Patient #A015', actorRole: 'patient', action: 'queue.join', resource: 'queue_ticket', details: 'Kölapp #A015 skapad' },
-    { id: '14', timestamp: '2026-03-20 09:10', actor: 'Anna Svensson', actorRole: 'staff', action: 'patient.called', resource: 'queue_ticket', details: 'Patient #A014 kallad till Rum 1' },
-    { id: '15', timestamp: '2026-03-20 09:15', actor: 'Maria Johansson', actorRole: 'admin', action: 'settings.updated', resource: 'clinic', details: 'Max köstorlek ändrad till 250' },
-    { id: '16', timestamp: '2026-03-20 09:20', actor: 'Erik Lindqvist', actorRole: 'staff', action: 'patient.called', resource: 'queue_ticket', details: 'Patient #A015 kallad till Rum 2' },
-    { id: '17', timestamp: '2026-03-20 09:30', actor: 'Patient #A016', actorRole: 'patient', action: 'queue.join', resource: 'queue_ticket', details: 'Kölapp #A016 skapad' },
-    { id: '18', timestamp: '2026-03-20 09:35', actor: 'Anna Svensson', actorRole: 'staff', action: 'patient.completed', resource: 'queue_ticket', details: 'Patient #A014 klar i Rum 1' },
-    { id: '19', timestamp: '2026-03-20 09:40', actor: 'Maria Johansson', actorRole: 'admin', action: 'user.created', resource: 'user', details: 'Användare lisa.ek@klinik.se skapad' },
-    { id: '20', timestamp: '2026-03-20 09:45', actor: 'Erik Lindqvist', actorRole: 'staff', action: 'room.paused', resource: 'room', details: 'Rum 2 pausat — lunch' },
-  ];
-  return entries;
-}
-
-const MOCK_ENTRIES = generateMockEntries();
-
 const ALL_ACTIONS = Object.keys(ACTION_LABELS);
 
 /* ---------------------------------------------------------------------------
@@ -91,24 +66,81 @@ const ALL_ACTIONS = Object.keys(ACTION_LABELS);
    --------------------------------------------------------------------------- */
 
 export function AuditLogSection() {
+  const { accessToken } = useAuth();
+  const [entries, setEntries] = useState<AuditEntry[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
   const [actionFilter, setActionFilter] = useState<string>('all');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [filterOpen, setFilterOpen] = useState(false);
 
+  useEffect(() => {
+    if (!accessToken) return;
+    let active = true;
+
+    async function fetchAuditLog() {
+      setLoading(true);
+      setError('');
+      try {
+        const result = await getAuditLogApi(accessToken!);
+        if (!active) return;
+        if (result.success) {
+          setEntries(
+            result.data.map((e) => ({
+              id: e.id,
+              timestamp: e.timestamp,
+              actor: e.userId,
+              actorRole: 'staff' as const,
+              action: e.action,
+              resource: '',
+              details: e.details,
+            })),
+          );
+        } else {
+          setError('Kunde inte hämta revisionsloggen.');
+        }
+      } catch {
+        if (active) setError('Kunde inte nå servern.');
+      } finally {
+        if (active) setLoading(false);
+      }
+    }
+
+    fetchAuditLog();
+    return () => { active = false; };
+  }, [accessToken]);
+
   const filtered = useMemo(() => {
-    let entries = MOCK_ENTRIES;
+    let result = entries;
     if (actionFilter !== 'all') {
-      entries = entries.filter(e => e.action === actionFilter);
+      result = result.filter(e => e.action === actionFilter);
     }
     if (dateFrom) {
-      entries = entries.filter(e => e.timestamp >= dateFrom);
+      result = result.filter(e => e.timestamp >= dateFrom);
     }
     if (dateTo) {
-      entries = entries.filter(e => e.timestamp <= dateTo + ' 23:59');
+      result = result.filter(e => e.timestamp <= dateTo + ' 23:59');
     }
-    return entries;
-  }, [actionFilter, dateFrom, dateTo]);
+    return result;
+  }, [entries, actionFilter, dateFrom, dateTo]);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
+        <span className="ml-2 text-sm text-gray-500">Laddar revisionslogg...</span>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="bg-red-50 rounded-xl p-6 text-center">
+        <p className="text-sm text-red-700">{error}</p>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-4 sm:space-y-6">
