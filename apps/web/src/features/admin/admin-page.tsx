@@ -1175,37 +1175,50 @@ function ClinicsSection() {
 
 function SystemSection() {
   const { accessToken } = useAuth();
-  const [orgs, setOrgs] = useState<Array<{ name: string; clinics: number; users: number; plan: string; status: string }>>([]);
+  const [orgs, setOrgs] = useState<Array<{ id: string; name: string; slug: string; is_active: boolean }>>([]);
   const [orgsLoading, setOrgsLoading] = useState(true);
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [newOrgName, setNewOrgName] = useState('');
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [actionFeedback, setActionFeedback] = useState<string | null>(null);
 
-  useEffect(() => {
+  function fetchOrgs() {
     if (!accessToken) return;
-    let active = true;
-
-    // Fetch real orgs from API
-    api.getClinicsApi(accessToken).then((res) => {
-      if (!active) return;
+    api.getOrganizationsApi(accessToken).then((res) => {
       if (res.success && Array.isArray(res.data)) {
-        setOrgs(res.data.map((o: Record<string, unknown>) => ({
-          name: (o.name as string) || 'Okand',
-          clinics: (o.clinics as number) || 0,
-          users: (o.users as number) || (o.staff as number) || 0,
-          plan: (o.plan as string) || '-',
-          status: (o.status as string) || 'active',
-        })));
+        setOrgs(res.data);
       }
       setOrgsLoading(false);
-    }).catch(() => {
-      if (active) setOrgsLoading(false);
-    });
+    }).catch(() => setOrgsLoading(false));
+  }
 
-    return () => { active = false; };
-  }, [accessToken]);
+  useEffect(() => { fetchOrgs(); }, [accessToken]);
+
+  async function handleAddOrg() {
+    if (!newOrgName.trim() || !accessToken) return;
+    const result = await api.createOrganizationApi(accessToken, newOrgName.trim());
+    if (result.success) {
+      setNewOrgName('');
+      setShowAddForm(false);
+      setActionFeedback('Organisation skapad');
+      setTimeout(() => setActionFeedback(null), 2000);
+      fetchOrgs();
+    }
+  }
+
+  async function handleDeleteOrg(id: string) {
+    if (!accessToken) return;
+    await api.deleteOrganizationApi(accessToken, id);
+    setConfirmDeleteId(null);
+    setActionFeedback('Organisation borttagen');
+    setTimeout(() => setActionFeedback(null), 2000);
+    fetchOrgs();
+  }
 
   const systemHealth = [
     { label: 'API-server', status: 'ok', icon: Server, detail: 'Aktiv' },
     { label: 'Databas', status: 'ok', icon: Database, detail: 'PostgreSQL' },
-    { label: 'CPU-anvandning', status: 'ok', icon: Cpu, detail: 'Normal' },
+    { label: 'CPU-användning', status: 'ok', icon: Cpu, detail: 'Normal' },
     { label: 'CDN', status: 'ok', icon: Globe, detail: 'Alla regioner aktiva' },
   ];
 
@@ -1213,9 +1226,15 @@ function SystemSection() {
     <div className="space-y-4 sm:space-y-6">
       <h2 className="text-lg sm:text-xl font-bold text-gray-900">Systemadministration</h2>
 
+      {actionFeedback && (
+        <div className="rounded-lg bg-green-50 border border-green-200 px-4 py-3 text-sm text-green-800 flex items-center gap-2">
+          <Check className="w-4 h-4" /> {actionFeedback}
+        </div>
+      )}
+
       {/* System health */}
       <div>
-        <h3 className="text-sm font-semibold text-gray-700 mb-3">Systemhalsa</h3>
+        <h3 className="text-sm font-semibold text-gray-700 mb-3">Systemhälsa</h3>
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 sm:gap-4">
           {systemHealth.map((item, i) => (
             <div key={i} className="bg-white rounded-xl shadow-sm p-4 sm:p-5">
@@ -1232,7 +1251,36 @@ function SystemSection() {
 
       {/* Organisations */}
       <div>
-        <h3 className="text-sm font-semibold text-gray-700 mb-3">Organisationer</h3>
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-sm font-semibold text-gray-700">Organisationer</h3>
+          <button
+            onClick={() => setShowAddForm(true)}
+            className="inline-flex items-center gap-2 px-3 sm:px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 transition-colors min-h-[44px]"
+          >
+            <Plus className="w-4 h-4" />
+            <span className="hidden sm:inline">Lägg till organisation</span>
+            <span className="sm:hidden">Ny</span>
+          </button>
+        </div>
+
+        {showAddForm && (
+          <div className="bg-white rounded-xl shadow-sm p-4 mb-3 flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+            <input
+              type="text"
+              value={newOrgName}
+              onChange={e => setNewOrgName(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && handleAddOrg()}
+              placeholder="Organisationsnamn..."
+              className="flex-1 min-w-0 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[44px]"
+              autoFocus
+            />
+            <div className="flex gap-2">
+              <button onClick={handleAddOrg} className="flex-1 sm:flex-none px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 min-h-[44px]">Skapa</button>
+              <button onClick={() => { setShowAddForm(false); setNewOrgName(''); }} className="flex-1 sm:flex-none px-4 py-2 rounded-lg bg-gray-100 text-gray-600 text-sm font-medium hover:bg-gray-200 min-h-[44px]">Avbryt</button>
+            </div>
+          </div>
+        )}
+
         {orgsLoading ? (
           <div className="bg-white rounded-xl shadow-sm p-8 text-center text-gray-400 text-sm">Laddar...</div>
         ) : orgs.length === 0 ? (
@@ -1240,69 +1288,31 @@ function SystemSection() {
             <EmptyState message="Inga organisationer registrerade." icon={Building2} />
           </div>
         ) : (
-          <>
-            {/* Mobile card view */}
-            <div className="lg:hidden space-y-3">
-              {orgs.map((org, i) => (
-                <div key={i} className="bg-white rounded-xl shadow-sm p-4">
-                  <div className="flex items-start justify-between mb-3 gap-2">
-                    <h4 className="font-medium text-gray-900">{org.name}</h4>
-                    <Badge className={org.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}>
-                      {org.status === 'active' ? 'Aktiv' : 'Testperiod'}
-                    </Badge>
-                  </div>
-                  <div className="grid grid-cols-3 gap-2 text-sm">
-                    <div>
-                      <span className="text-gray-500 text-xs">Kliniker</span>
-                      <p className="font-medium text-gray-900">{org.clinics}</p>
-                    </div>
-                    <div>
-                      <span className="text-gray-500 text-xs">Anvandare</span>
-                      <p className="font-medium text-gray-900">{org.users}</p>
-                    </div>
-                    <div>
-                      <span className="text-gray-500 text-xs">Plan</span>
-                      <p><Badge className="bg-gray-100 text-gray-700">{org.plan}</Badge></p>
-                    </div>
-                  </div>
+          <div className="space-y-3">
+            {orgs.map((org) => (
+              <div key={org.id} className="bg-white rounded-xl shadow-sm p-4 flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <h4 className="font-medium text-gray-900 truncate">{org.name}</h4>
+                  <p className="text-xs text-gray-400">{org.slug}</p>
                 </div>
-              ))}
-            </div>
-
-            {/* Desktop table */}
-            <div className="hidden lg:block bg-white rounded-xl shadow-sm overflow-hidden">
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm text-left">
-                  <thead>
-                    <tr className="bg-gray-50 text-gray-500 uppercase text-xs tracking-wider">
-                      <th className="px-5 py-3 font-medium">Organisation</th>
-                      <th className="px-5 py-3 font-medium">Kliniker</th>
-                      <th className="px-5 py-3 font-medium">Anvandare</th>
-                      <th className="px-5 py-3 font-medium">Plan</th>
-                      <th className="px-5 py-3 font-medium">Status</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-100">
-                    {orgs.map((org, i) => (
-                      <tr key={i} className="hover:bg-gray-50 transition-colors">
-                        <td className="px-5 py-3 font-medium text-gray-900">{org.name}</td>
-                        <td className="px-5 py-3 text-gray-600">{org.clinics}</td>
-                        <td className="px-5 py-3 text-gray-600">{org.users}</td>
-                        <td className="px-5 py-3">
-                          <Badge className="bg-gray-100 text-gray-700">{org.plan}</Badge>
-                        </td>
-                        <td className="px-5 py-3">
-                          <Badge className={org.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}>
-                            {org.status === 'active' ? 'Aktiv' : 'Testperiod'}
-                          </Badge>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                <div className="flex items-center gap-2 shrink-0">
+                  <Badge className={org.is_active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}>
+                    {org.is_active ? 'Aktiv' : 'Inaktiv'}
+                  </Badge>
+                  {confirmDeleteId === org.id ? (
+                    <div className="flex items-center gap-1">
+                      <button onClick={() => handleDeleteOrg(org.id)} className="px-2 py-1 text-xs bg-red-600 text-white rounded hover:bg-red-700 min-h-[36px]">Ta bort</button>
+                      <button onClick={() => setConfirmDeleteId(null)} className="px-2 py-1 text-xs bg-gray-200 text-gray-600 rounded hover:bg-gray-300 min-h-[36px]">Avbryt</button>
+                    </div>
+                  ) : (
+                    <button onClick={() => setConfirmDeleteId(org.id)} className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg min-h-[36px]">
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  )}
+                </div>
               </div>
-            </div>
-          </>
+            ))}
+          </div>
         )}
       </div>
     </div>
