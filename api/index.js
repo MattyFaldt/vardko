@@ -435,6 +435,9 @@ module.exports = async function handler(req, res) {
   const method = req.method || 'GET';
   const pathname = getPathname(url);
 
+  // Debug: log what URL we receive
+  console.log('API handler called:', method, url, pathname);
+
   // CORS headers
   res.setHeader('Access-Control-Allow-Origin', process.env.CORS_ORIGIN || '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
