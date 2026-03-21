@@ -83,6 +83,33 @@ const SUPPORTED_LANGUAGES = ['sv', 'no', 'da', 'fi', 'en', 'de', 'es', 'fr', 'it
 const USER_ROLES = ['org_admin', 'clinic_admin', 'staff'];
 
 // ==========================================================================
+// RESPONSE MAPPING HELPERS (snake_case → camelCase)
+// ==========================================================================
+
+function mapRoom(r, staffLookup) {
+  return {
+    id: r.id,
+    name: r.name,
+    status: r.status,
+    staffName: staffLookup?.[r.current_staff_id] || null,
+    currentTicketNumber: r.current_ticket_number || null,
+    isActive: r.is_active,
+    displayOrder: r.display_order,
+  };
+}
+
+function mapStaff(s, roomLookup) {
+  return {
+    id: s.id,
+    displayName: s.display_name,
+    email: s.email,
+    role: s.role,
+    isActive: s.is_active,
+    assignedRoomId: roomLookup?.[s.id] || null,
+  };
+}
+
+// ==========================================================================
 // ZOD SCHEMAS
 // ==========================================================================
 
@@ -1010,16 +1037,23 @@ module.exports = async function handler(req, res) {
       const activeRooms = roomArr.filter((r) => r.is_active && r.status !== 'closed').length;
       const occupiedRooms = roomArr.filter((r) => r.status === 'occupied').length;
 
+      const avgWait = waiting.length > 0 ? Math.round(waiting.reduce((sum, t) => sum + (t.estimated_wait_minutes ?? 0), 0) / waiting.length) : 0;
+
       return res.status(200).json(
         createSuccessResponse({
           clinicId,
-          queueLength: waiting.length,
+          waitingCount: waiting.length,
+          activeRooms,
+          avgWaitMinutes: avgWait,
+          patientsToday: tickets.length,
           completedToday: completed,
           noShowsToday: noShows,
+          avgServiceTimeMinutes: Math.round(DEFAULT_SERVICE_TIME_SECONDS / 60),
+          // Legacy fields kept for backward compat
+          queueLength: waiting.length,
           totalRooms: roomArr.length,
-          activeRooms,
           occupiedRooms,
-          averageWaitMinutes: waiting.length > 0 ? Math.round(waiting.reduce((sum, t) => sum + (t.estimated_wait_minutes ?? 0), 0) / waiting.length) : 0,
+          averageWaitMinutes: avgWait,
         }),
       );
     }
@@ -1101,7 +1135,7 @@ module.exports = async function handler(req, res) {
 
       await addAuditEntry('room.created', 'room', room.id, null, room.organization_id, clinicId);
 
-      return res.status(201).json(createSuccessResponse(room));
+      return res.status(201).json(createSuccessResponse(mapRoom(room, {})));
     }
 
     // GET /api/v1/admin/rooms
@@ -1125,7 +1159,40 @@ module.exports = async function handler(req, res) {
         .eq('clinic_id', clinicId)
         .order('display_order', { ascending: true });
 
-      return res.status(200).json(createSuccessResponse(roomList || []));
+      const rooms = roomList || [];
+
+      // Build staff name lookup for rooms that have current_staff_id
+      const staffIds = rooms.map((r) => r.current_staff_id).filter(Boolean);
+      const staffLookup = {};
+      if (staffIds.length > 0) {
+        const { data: staffUsers } = await supabase
+          .from('users')
+          .select('id, display_name')
+          .in('id', staffIds);
+        for (const u of staffUsers || []) {
+          staffLookup[u.id] = u.display_name;
+        }
+      }
+
+      // Resolve current ticket numbers
+      const ticketIds = rooms.map((r) => r.current_ticket_id).filter(Boolean);
+      const ticketLookup = {};
+      if (ticketIds.length > 0) {
+        const { data: tickets } = await supabase
+          .from('queue_tickets')
+          .select('id, ticket_number')
+          .in('id', ticketIds);
+        for (const t of tickets || []) {
+          ticketLookup[t.id] = t.ticket_number;
+        }
+      }
+
+      const mappedRooms = rooms.map((r) => ({
+        ...mapRoom(r, staffLookup),
+        currentTicketNumber: ticketLookup[r.current_ticket_id] || null,
+      }));
+
+      return res.status(200).json(createSuccessResponse(mappedRooms));
     }
 
     // PUT /api/v1/admin/rooms/:roomId
@@ -1168,7 +1235,18 @@ module.exports = async function handler(req, res) {
 
       await addAuditEntry('room.updated', 'room', roomId, null, room.organization_id, room.clinic_id);
 
-      return res.status(200).json(createSuccessResponse(updated));
+      // Resolve staff name if present
+      let staffName = null;
+      if (updated.current_staff_id) {
+        const { data: staffUser } = await supabase
+          .from('users')
+          .select('display_name')
+          .eq('id', updated.current_staff_id)
+          .single();
+        staffName = staffUser ? staffUser.display_name : null;
+      }
+
+      return res.status(200).json(createSuccessResponse(mapRoom(updated, { [updated.current_staff_id]: staffName })));
     }
 
     // DELETE /api/v1/admin/rooms/:roomId
@@ -1212,7 +1290,22 @@ module.exports = async function handler(req, res) {
         .select('id, organization_id, clinic_id, email, display_name, role, preferred_language, is_active, last_login_at')
         .eq('clinic_id', clinicId);
 
-      return res.status(200).json(createSuccessResponse(staffList || []));
+      const staffArr = staffList || [];
+
+      // Build room lookup: staff_id → room_id (rooms where current_staff_id = user.id)
+      const staffIdsForRoomLookup = staffArr.map((s) => s.id);
+      const roomLookup = {};
+      if (staffIdsForRoomLookup.length > 0) {
+        const { data: roomsWithStaff } = await supabase
+          .from('rooms')
+          .select('id, current_staff_id')
+          .in('current_staff_id', staffIdsForRoomLookup);
+        for (const r of roomsWithStaff || []) {
+          roomLookup[r.current_staff_id] = r.id;
+        }
+      }
+
+      return res.status(200).json(createSuccessResponse(staffArr.map((s) => mapStaff(s, roomLookup))));
     }
 
     // POST /api/v1/admin/staff
@@ -1248,7 +1341,7 @@ module.exports = async function handler(req, res) {
 
       await addAuditEntry('staff.created', 'user', staff.id, null, organizationId, clinicId);
 
-      return res.status(201).json(createSuccessResponse(staff));
+      return res.status(201).json(createSuccessResponse(mapStaff(staff, {})));
     }
 
     // PUT /api/v1/admin/staff/:userId
@@ -1293,7 +1386,15 @@ module.exports = async function handler(req, res) {
 
       await addAuditEntry('staff.updated', 'user', userId, null, staff.organization_id, staff.clinic_id);
 
-      return res.status(200).json(createSuccessResponse(updated));
+      // Look up assigned room for this staff member
+      const { data: assignedRoom } = await supabase
+        .from('rooms')
+        .select('id')
+        .eq('current_staff_id', userId)
+        .limit(1)
+        .maybeSingle();
+
+      return res.status(200).json(createSuccessResponse(mapStaff(updated, { [userId]: assignedRoom ? assignedRoom.id : null })));
     }
 
     // DELETE /api/v1/admin/staff/:userId
@@ -1419,8 +1520,10 @@ module.exports = async function handler(req, res) {
           clinicSlug: clinic.slug,
           queueLength: waiting.length,
           rooms: roomArr.map((r) => ({
+            id: r.id,
             name: r.name,
             status: r.status,
+            isActive: r.is_active,
             displayOrder: r.display_order,
           })),
           calledTickets,
