@@ -1,5 +1,7 @@
 import { createContext, useContext, useState, useCallback, type ReactNode } from 'react';
 import type { UserRole } from './demo-data';
+import { loginApi } from './api-client';
+// refreshTokenApi is available from './api-client' for future token refresh logic
 
 export interface AuthUser {
   id: string;
@@ -10,14 +12,15 @@ export interface AuthUser {
 
 interface AuthContextValue {
   user: AuthUser | null;
+  accessToken: string | null;
   isAuthenticated: boolean;
-  login: (email: string, password: string) => { success: boolean; error?: string };
+  login: (email: string, password: string) => Promise<{ success: boolean; error?: string; role?: UserRole }>;
   logout: () => void;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
-// Demo accounts — in production this would be Argon2-hashed and validated server-side
+// Demo accounts — kept for backward compatibility (login page shows these)
 const DEMO_ACCOUNTS: Array<{ email: string; password: string; user: AuthUser }> = [
   {
     email: 'anna@kungsholmen.se',
@@ -53,11 +56,36 @@ const DEMO_ACCOUNTS: Array<{ email: string; password: string; user: AuthUser }> 
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
+  const [accessToken, setAccessToken] = useState<string | null>(null);
+  const [refreshToken, setRefreshToken] = useState<string | null>(null);
 
-  const login = useCallback((email: string, password: string): { success: boolean; error?: string } => {
+  const login = useCallback(async (email: string, password: string): Promise<{ success: boolean; error?: string; role?: UserRole }> => {
     const trimmedEmail = email.trim().toLowerCase();
 
-    // Simulate brute-force delay
+    // Try the real API first
+    try {
+      const result = await loginApi(trimmedEmail, password);
+
+      if (result.success) {
+        const { accessToken: at, refreshToken: rt, user: apiUser } = result.data;
+        setAccessToken(at);
+        setRefreshToken(rt);
+        setUser({
+          id: apiUser.id,
+          displayName: apiUser.displayName,
+          email: apiUser.email,
+          role: apiUser.role as UserRole,
+        });
+        return { success: true, role: apiUser.role as UserRole };
+      }
+
+      // API returned an explicit error (credentials wrong, etc.)
+      return { success: false, error: result.error.message };
+    } catch {
+      // Network error or API unavailable — fall back to demo accounts
+    }
+
+    // Demo fallback
     const account = DEMO_ACCOUNTS.find(a => a.email === trimmedEmail);
 
     if (!account || account.password !== password) {
@@ -65,15 +93,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     setUser(account.user);
-    return { success: true };
+    setAccessToken(null); // no real token in demo mode
+    setRefreshToken(null);
+    return { success: true, role: account.user.role };
   }, []);
 
   const logout = useCallback(() => {
     setUser(null);
+    setAccessToken(null);
+    setRefreshToken(null);
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, isAuthenticated: user !== null, login, logout }}>
+    <AuthContext.Provider value={{ user, accessToken, isAuthenticated: user !== null, login, logout }}>
       {children}
     </AuthContext.Provider>
   );

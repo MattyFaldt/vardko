@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate, Navigate } from 'react-router-dom';
 import { Heart, Mail, Lock, Eye, EyeOff, AlertCircle, LogIn } from 'lucide-react';
-import { useAuth, DEMO_ACCOUNTS } from '../../lib/auth-context';
+import { useAuth } from '../../lib/auth-context';
 
 export function LoginPage() {
   const { login, isAuthenticated, user } = useAuth();
@@ -34,12 +34,11 @@ export function LoginPage() {
     setLoading(true);
     await new Promise(r => setTimeout(r, 600));
 
-    const result = login(email, password);
+    const result = await login(email, password);
 
     if (result.success) {
       setAttempts(0);
-      const account = DEMO_ACCOUNTS.find(a => a.email === email.trim().toLowerCase());
-      const target = account?.user.role === 'staff' ? '/staff' : '/admin';
+      const target = result.role === 'staff' ? '/staff' : '/admin';
       navigate(target, { replace: true });
     } else {
       const newAttempts = attempts + 1;
