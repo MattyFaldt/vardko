@@ -1,29 +1,39 @@
-import { Hono } from 'hono';
-import { cors } from 'hono/cors';
-import { handle } from 'hono/vercel';
+// Standard Vercel Node.js serverless handler (no Hono)
+export default function handler(req: { url?: string; method?: string }, res: { setHeader: Function; status: Function; json: Function; end: Function }) {
+  const url = req.url || '/';
+  const method = req.method || 'GET';
 
-const app = new Hono().basePath('/api/v1');
+  // CORS
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
 
-app.use('*', cors({ origin: '*' }));
+  if (method === 'OPTIONS') {
+    res.status(204).end();
+    return;
+  }
 
-app.get('/health', (c) => {
-  return c.json({ success: true, data: { status: 'ok', ts: Date.now() } });
-});
+  // Simple router
+  if (url.includes('/health')) {
+    res.status(200).json({
+      success: true,
+      data: { status: 'ok', timestamp: new Date().toISOString(), url },
+    });
+    return;
+  }
 
-app.get('/clinic/:slug/info', (c) => {
-  const slug = c.req.param('slug');
-  return c.json({
-    success: true,
-    data: { name: 'Kungsholmens Vårdcentral', slug, isActive: true },
+  if (url.includes('/clinic/') && url.includes('/info')) {
+    const match = url.match(/\/clinic\/([^/]+)\/info/);
+    const slug = match ? match[1] : 'unknown';
+    res.status(200).json({
+      success: true,
+      data: { name: 'Kungsholmens Vårdcentral', slug, isActive: true },
+    });
+    return;
+  }
+
+  res.status(404).json({
+    success: false,
+    error: { code: 'NOT_FOUND', message: `Route not found: ${url}` },
   });
-});
-
-app.onError((err, c) => {
-  return c.json({ success: false, error: { code: 'ERROR', message: err.message } }, 500);
-});
-
-app.notFound((c) => {
-  return c.json({ success: false, error: { code: 'NOT_FOUND', path: c.req.path } }, 404);
-});
-
-export default handle(app);
+}
