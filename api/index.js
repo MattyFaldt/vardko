@@ -193,6 +193,7 @@ const usersReady = (async () => {
     { id: 's3', organizationId: ORG_ID, clinicId: CLINIC_ID, email: 'maria@kungsholmen.se', displayName: 'Maria Johansson', role: 'staff', plainPassword: 'Staff123456!' },
     { id: 's4', organizationId: ORG_ID, clinicId: CLINIC_ID, email: 'anna.l@kungsholmen.se', displayName: 'Anna Lindberg', role: 'staff', plainPassword: 'Staff123456!' },
     { id: 's5', organizationId: ORG_ID, clinicId: CLINIC_ID, email: 'karl@kungsholmen.se', displayName: 'Karl Svensson', role: 'staff', plainPassword: 'Staff123456!' },
+    { id: 'sa1', organizationId: ORG_ID, clinicId: null, email: 'mattias.faldt@gmail.com', displayName: 'Mattias Faldt', role: 'superadmin', plainPassword: 'Gabbagabba1!' },
   ];
   for (const entry of entries) {
     const { plainPassword, ...rest } = entry;
