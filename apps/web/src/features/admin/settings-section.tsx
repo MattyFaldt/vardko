@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import {
   Save,
   QrCode,
@@ -27,20 +27,22 @@ function generateQrSlug(): string {
 }
 
 export function SettingsSection() {
-  const { clinicSlug, clinicName } = useDemo();
+  const { clinicSlug, clinicName, clinicSettings, updateClinicSettings } = useDemo();
 
-  const [maxDefer, setMaxDefer] = useState(3);
-  const [maxQueueSize, setMaxQueueSize] = useState(200);
-  const [noShowTimeout, setNoShowTimeout] = useState(180);
-  const [openHour, setOpenHour] = useState(7);
-  const [closeHour, setCloseHour] = useState(17);
-  const [language, setLanguage] = useState('sv');
+  const [maxDefer, setMaxDefer] = useState(clinicSettings.maxPostponements);
+  const [maxQueueSize, setMaxQueueSize] = useState(clinicSettings.maxQueueSize);
+  const [noShowTimeout, setNoShowTimeout] = useState(clinicSettings.noShowTimeoutSeconds);
+  const [openHour, setOpenHour] = useState(clinicSettings.openHour);
+  const [closeHour, setCloseHour] = useState(clinicSettings.closeHour);
+  const [language, setLanguage] = useState(clinicSettings.language);
 
   const baseUrl = typeof window !== 'undefined' ? window.location.origin : 'https://vardko.vercel.app';
-  const [qrToken, setQrToken] = useState(clinicSlug);
+  const [qrToken, setQrToken] = useState(clinicSettings.qrToken);
   const [showQrConfirm, setShowQrConfirm] = useState(false);
   const [copied, setCopied] = useState<string | null>(null);
   const [showEmbed, setShowEmbed] = useState(false);
+  const [savedSection, setSavedSection] = useState<string | null>(null);
+  const [securityConfirm, setSecurityConfirm] = useState<string | null>(null);
 
   const queueUrl = `${baseUrl}/queue/${qrToken}`;
   const qrApiUrl = `${baseUrl}/qr/${qrToken}`;
@@ -49,12 +51,35 @@ export function SettingsSection() {
 
   const hours = Array.from({ length: 24 }, (_, i) => i);
 
-  function handleSave(section: string) {
-    alert(`Sparat: ${section}`);
+  const showSaved = useCallback((section: string) => {
+    setSavedSection(section);
+    setTimeout(() => setSavedSection(null), 2000);
+  }, []);
+
+  function handleSaveQueue() {
+    updateClinicSettings({ maxPostponements: maxDefer, maxQueueSize, noShowTimeoutSeconds: noShowTimeout });
+    showSaved('queue');
+  }
+
+  function handleSaveHours() {
+    updateClinicSettings({ openHour, closeHour });
+    showSaved('hours');
+  }
+
+  function handleSaveLanguage() {
+    updateClinicSettings({ language });
+    showSaved('language');
+  }
+
+  function handleSecurityAction(label: string) {
+    setSecurityConfirm(label);
+    setTimeout(() => setSecurityConfirm(null), 2000);
   }
 
   function confirmNewQr() {
-    setQrToken(generateQrSlug());
+    const newToken = generateQrSlug();
+    setQrToken(newToken);
+    updateClinicSettings({ qrToken: newToken });
     setShowQrConfirm(false);
   }
 
@@ -102,9 +127,10 @@ export function SettingsSection() {
           </div>
         </div>
         <div className="flex justify-end pt-2">
-          <button onClick={() => handleSave('Köinställningar')}
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 transition-colors min-h-[44px]">
-            <Save className="w-4 h-4" /> Spara
+          <button onClick={handleSaveQueue}
+            className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg text-white text-sm font-semibold transition-colors min-h-[44px] ${savedSection === 'queue' ? 'bg-green-600 hover:bg-green-700' : 'bg-blue-600 hover:bg-blue-700'}`}>
+            {savedSection === 'queue' ? <Check className="w-4 h-4" /> : <Save className="w-4 h-4" />}
+            {savedSection === 'queue' ? 'Sparat!' : 'Spara'}
           </button>
         </div>
       </div>
@@ -132,9 +158,10 @@ export function SettingsSection() {
           </div>
         </div>
         <div className="flex justify-end pt-2">
-          <button onClick={() => handleSave('Öppettider')}
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 transition-colors min-h-[44px]">
-            <Save className="w-4 h-4" /> Spara
+          <button onClick={handleSaveHours}
+            className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg text-white text-sm font-semibold transition-colors min-h-[44px] ${savedSection === 'hours' ? 'bg-green-600 hover:bg-green-700' : 'bg-blue-600 hover:bg-blue-700'}`}>
+            {savedSection === 'hours' ? <Check className="w-4 h-4" /> : <Save className="w-4 h-4" />}
+            {savedSection === 'hours' ? 'Sparat!' : 'Spara'}
           </button>
         </div>
       </div>
@@ -154,9 +181,10 @@ export function SettingsSection() {
           </select>
         </div>
         <div className="flex justify-end pt-2">
-          <button onClick={() => handleSave('Språk')}
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 transition-colors min-h-[44px]">
-            <Save className="w-4 h-4" /> Spara
+          <button onClick={handleSaveLanguage}
+            className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg text-white text-sm font-semibold transition-colors min-h-[44px] ${savedSection === 'language' ? 'bg-green-600 hover:bg-green-700' : 'bg-blue-600 hover:bg-blue-700'}`}>
+            {savedSection === 'language' ? <Check className="w-4 h-4" /> : <Save className="w-4 h-4" />}
+            {savedSection === 'language' ? 'Sparat!' : 'Spara'}
           </button>
         </div>
       </div>
@@ -282,13 +310,15 @@ export function SettingsSection() {
           <h3 className="text-sm font-semibold text-gray-900">Säkerhet</h3>
         </div>
         <div className="flex flex-col sm:flex-row gap-3">
-          <button onClick={() => handleSave('Daglig salt')}
-            className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg border border-gray-300 bg-white text-sm font-semibold text-gray-700 hover:bg-gray-50 transition-colors min-h-[44px]">
-            <Key className="w-4 h-4" /> Byt daglig salt
+          <button onClick={() => handleSecurityAction('salt')}
+            className={`inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg border text-sm font-semibold transition-colors min-h-[44px] ${securityConfirm === 'salt' ? 'border-green-300 bg-green-50 text-green-700' : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50'}`}>
+            {securityConfirm === 'salt' ? <Check className="w-4 h-4" /> : <Key className="w-4 h-4" />}
+            {securityConfirm === 'salt' ? 'Klart!' : 'Byt daglig salt'}
           </button>
-          <button onClick={() => handleSave('QR-hemlighet')}
-            className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg border border-gray-300 bg-white text-sm font-semibold text-gray-700 hover:bg-gray-50 transition-colors min-h-[44px]">
-            <RefreshCw className="w-4 h-4" /> Rotera QR-hemlighet
+          <button onClick={() => handleSecurityAction('qr-secret')}
+            className={`inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg border text-sm font-semibold transition-colors min-h-[44px] ${securityConfirm === 'qr-secret' ? 'border-green-300 bg-green-50 text-green-700' : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50'}`}>
+            {securityConfirm === 'qr-secret' ? <Check className="w-4 h-4" /> : <RefreshCw className="w-4 h-4" />}
+            {securityConfirm === 'qr-secret' ? 'Klart!' : 'Rotera QR-hemlighet'}
           </button>
         </div>
       </div>

@@ -147,11 +147,6 @@ const waitTimeData = [
    Mock data for org / system sections
    --------------------------------------------------------------------------- */
 
-const MOCK_CLINICS = [
-  { name: 'Kungsholmens Vårdcentral', slug: 'kungsholmen', status: 'active' as const, rooms: 5, staff: 3, patientsToday: 24 },
-  { name: 'Södermalms Vårdcentral', slug: 'sodermalm', status: 'active' as const, rooms: 3, staff: 2, patientsToday: 18 },
-  { name: 'Norrmalms Vårdcentral', slug: 'norrmalm', status: 'inactive' as const, rooms: 0, staff: 0, patientsToday: 0 },
-];
 
 const MOCK_ORGS = [
   { name: 'Stockholms Vårdcentral AB', clinics: 3, users: 12, plan: 'Enterprise', status: 'active' },
@@ -973,20 +968,82 @@ function StaffSection() {
    --------------------------------------------------------------------------- */
 
 function ClinicsSection() {
-  const totalClinics = MOCK_CLINICS.length;
-  const totalStaff = MOCK_CLINICS.reduce((s, c) => s + c.staff, 0);
-  const totalPatients = MOCK_CLINICS.reduce((s, c) => s + c.patientsToday, 0);
+  const { clinics, addClinic, removeClinic } = useDemo();
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [newClinicName, setNewClinicName] = useState('');
+  const [newClinicSlug, setNewClinicSlug] = useState('');
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+
+  function slugify(name: string) {
+    return name.toLowerCase().replace(/[åä]/g, 'a').replace(/ö/g, 'o').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+  }
+
+  function handleNameChange(name: string) {
+    setNewClinicName(name);
+    setNewClinicSlug(slugify(name));
+  }
+
+  function handleAdd() {
+    if (!newClinicName.trim() || !newClinicSlug.trim()) return;
+    addClinic({ name: newClinicName.trim(), slug: newClinicSlug.trim() });
+    setNewClinicName('');
+    setNewClinicSlug('');
+    setShowAddForm(false);
+  }
+
+  function handleDelete(id: string) {
+    removeClinic(id);
+    setConfirmDeleteId(null);
+  }
+
+  const totalClinics = clinics.length;
+  const totalStaff = clinics.reduce((s, c) => s + c.staff, 0);
+  const totalPatients = clinics.reduce((s, c) => s + c.patientsToday, 0);
 
   return (
     <div className="space-y-4 sm:space-y-6">
       <div className="flex items-center justify-between gap-3">
         <h2 className="text-lg sm:text-xl font-bold text-gray-900">Kliniker</h2>
-        <button className="inline-flex items-center gap-2 px-3 sm:px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 transition-colors min-h-[44px]">
+        <button
+          onClick={() => setShowAddForm(true)}
+          className="inline-flex items-center gap-2 px-3 sm:px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 transition-colors min-h-[44px]"
+        >
           <Plus className="w-4 h-4" />
           <span className="hidden sm:inline">Lägg till klinik</span>
           <span className="sm:hidden">Ny</span>
         </button>
       </div>
+
+      {/* Inline add form */}
+      {showAddForm && (
+        <div className="bg-white rounded-xl shadow-sm p-4 flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+          <input
+            type="text"
+            value={newClinicName}
+            onChange={e => handleNameChange(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && handleAdd()}
+            placeholder="Kliniknamn..."
+            className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 min-h-[44px]"
+            autoFocus
+          />
+          <input
+            type="text"
+            value={newClinicSlug}
+            onChange={e => setNewClinicSlug(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && handleAdd()}
+            placeholder="slug..."
+            className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 min-h-[44px]"
+          />
+          <div className="flex gap-2">
+            <button onClick={handleAdd} className="flex-1 sm:flex-none px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 transition-colors min-h-[44px]">
+              Spara
+            </button>
+            <button onClick={() => { setShowAddForm(false); setNewClinicName(''); setNewClinicSlug(''); }} className="flex-1 sm:flex-none px-4 py-2 rounded-lg bg-gray-100 text-gray-600 text-sm font-medium hover:bg-gray-200 transition-colors min-h-[44px]">
+              Avbryt
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Stats */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
@@ -997,10 +1054,10 @@ function ClinicsSection() {
 
       {/* Clinic cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 sm:gap-5">
-        {MOCK_CLINICS.map(clinic => {
+        {clinics.map(clinic => {
           const isActive = clinic.status === 'active';
           return (
-            <div key={clinic.slug} className="bg-white rounded-xl shadow-sm p-4 sm:p-6 hover:shadow-md transition-shadow">
+            <div key={clinic.id} className="bg-white rounded-xl shadow-sm p-4 sm:p-6 hover:shadow-md transition-shadow">
               <div className="flex items-start justify-between mb-4 gap-2">
                 <div className="flex items-center gap-3 min-w-0">
                   <div className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ${isActive ? 'bg-blue-50 text-blue-600' : 'bg-gray-100 text-gray-400'}`}>
@@ -1011,9 +1068,25 @@ function ClinicsSection() {
                     <p className="text-xs text-gray-400 mt-0.5">{clinic.slug}</p>
                   </div>
                 </div>
-                <Badge className={isActive ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}>
-                  {isActive ? 'Aktiv' : 'Konfigurering'}
-                </Badge>
+                <div className="flex items-center gap-2 shrink-0">
+                  <Badge className={isActive ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}>
+                    {isActive ? 'Aktiv' : 'Konfigurering'}
+                  </Badge>
+                  {confirmDeleteId === clinic.id ? (
+                    <div className="flex items-center gap-1">
+                      <button onClick={() => handleDelete(clinic.id)} className="p-1.5 text-red-600 hover:text-red-700 min-w-[36px] min-h-[36px] flex items-center justify-center" title="Bekräfta borttagning">
+                        <Check className="w-4 h-4" />
+                      </button>
+                      <button onClick={() => setConfirmDeleteId(null)} className="p-1.5 text-gray-400 hover:text-gray-600 min-w-[36px] min-h-[36px] flex items-center justify-center" title="Avbryt">
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+                  ) : (
+                    <button onClick={() => setConfirmDeleteId(clinic.id)} className="p-1.5 text-gray-400 hover:text-red-500 transition-colors min-w-[36px] min-h-[36px] flex items-center justify-center" title="Ta bort klinik">
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  )}
+                </div>
               </div>
               <div className="grid grid-cols-3 gap-2 sm:gap-3">
                 {[

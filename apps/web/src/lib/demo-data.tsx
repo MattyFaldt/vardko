@@ -41,10 +41,32 @@ export interface DemoStats {
 
 export type UserRole = 'superadmin' | 'org_admin' | 'clinic_admin' | 'staff';
 
+export interface DemoClinic {
+  id: string;
+  name: string;
+  slug: string;
+  status: 'active' | 'inactive';
+  rooms: number;
+  staff: number;
+  patientsToday: number;
+}
+
+export interface ClinicSettings {
+  maxPostponements: number;
+  maxQueueSize: number;
+  noShowTimeoutSeconds: number;
+  openHour: number;
+  closeHour: number;
+  language: string;
+  qrToken: string;
+}
+
 interface DemoContextValue {
   patients: DemoPatient[];
   rooms: DemoRoom[];
   staff: DemoStaffMember[];
+  clinics: DemoClinic[];
+  clinicSettings: ClinicSettings;
   stats: DemoStats;
   clinicName: string;
   clinicSlug: string;
@@ -69,9 +91,30 @@ interface DemoContextValue {
   removeStaffMember: (id: string) => void;
   // Staff-room assignment
   assignStaffToRoom: (roomId: string, staffId: string | null) => void;
+  // Clinic management
+  addClinic: (clinic: { name: string; slug: string }) => void;
+  removeClinic: (id: string) => void;
+  // Settings
+  updateClinicSettings: (updates: Partial<ClinicSettings>) => void;
 }
 
 const DemoContext = createContext<DemoContextValue | null>(null);
+
+const INITIAL_CLINICS: DemoClinic[] = [
+  { id: 'c1', name: 'Kungsholmens Vårdcentral', slug: 'kungsholmen', status: 'active', rooms: 5, staff: 3, patientsToday: 24 },
+  { id: 'c2', name: 'Södermalms Vårdcentral', slug: 'sodermalm', status: 'active', rooms: 3, staff: 2, patientsToday: 18 },
+  { id: 'c3', name: 'Norrmalms Vårdcentral', slug: 'norrmalm', status: 'inactive', rooms: 0, staff: 0, patientsToday: 0 },
+];
+
+const INITIAL_SETTINGS: ClinicSettings = {
+  maxPostponements: 3,
+  maxQueueSize: 200,
+  noShowTimeoutSeconds: 180,
+  openHour: 7,
+  closeHour: 17,
+  language: 'sv',
+  qrToken: 'kungsholmen',
+};
 
 const INITIAL_ROOMS: DemoRoom[] = [
   { id: 'r1', name: 'Rum 1', status: 'occupied', staffName: 'Erik Eriksson', currentTicketNumber: 3, isActive: true },
@@ -107,11 +150,14 @@ function makeInitialPatients(): DemoPatient[] {
 
 let nextRoomId = 6;
 let nextStaffId = 6;
+let nextClinicId = 4;
 
 export function DemoProvider({ children }: { children: ReactNode }) {
   const [patients, setPatients] = useState<DemoPatient[]>(makeInitialPatients);
   const [rooms, setRooms] = useState<DemoRoom[]>(INITIAL_ROOMS);
   const [staff, setStaff] = useState<DemoStaffMember[]>(INITIAL_STAFF);
+  const [clinics, setClinics] = useState<DemoClinic[]>(INITIAL_CLINICS);
+  const [clinicSettings, setClinicSettings] = useState<ClinicSettings>(INITIAL_SETTINGS);
   const [nextTicket, setNextTicket] = useState(11);
   const [currentUserRole, setCurrentUserRole] = useState<UserRole>('clinic_admin');
 
@@ -247,16 +293,32 @@ export function DemoProvider({ children }: { children: ReactNode }) {
     }
   }, [staff]);
 
+  // Clinic management
+  const addClinic = useCallback((clinic: { name: string; slug: string }) => {
+    const id = `c${nextClinicId++}`;
+    setClinics(prev => [...prev, { id, name: clinic.name, slug: clinic.slug, status: 'active', rooms: 0, staff: 0, patientsToday: 0 }]);
+  }, []);
+
+  const removeClinic = useCallback((id: string) => {
+    setClinics(prev => prev.filter(c => c.id !== id));
+  }, []);
+
+  // Settings management
+  const updateClinicSettings = useCallback((updates: Partial<ClinicSettings>) => {
+    setClinicSettings(prev => ({ ...prev, ...updates }));
+  }, []);
+
   return (
     <DemoContext.Provider value={{
-      patients, rooms, staff, stats, calledTickets,
-      clinicName: 'Kungsholmens Vårdcentral', clinicSlug: 'kungsholmen',
+      patients, rooms, staff, clinics, clinicSettings, stats, calledTickets,
+      clinicName: 'Kungsholmens Vårdcentral', clinicSlug: clinicSettings.qrToken,
       currentUserRole, setCurrentUserRole,
       joinQueue, callNextPatient, completePatient, markNoShow,
       toggleRoomPause, openRoom, closeRoom,
       addRoom, updateRoom, removeRoom,
       addStaffMember, updateStaffMember, removeStaffMember,
       assignStaffToRoom,
+      addClinic, removeClinic, updateClinicSettings,
     }}>
       {children}
     </DemoContext.Provider>
