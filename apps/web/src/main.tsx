@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { DemoProvider } from './lib/demo-data';
 import { AuthProvider } from './lib/auth-context';
+import { BrandingProvider } from './lib/branding';
 import { ProtectedRoute } from './lib/protected-route';
 import './index.css';
 
@@ -18,6 +19,7 @@ createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <BrowserRouter>
       <AuthProvider>
+        <BrandingProvider>
         <DemoProvider>
           <Routes>
             <Route path="/" element={<HomePage />} />
@@ -31,6 +33,7 @@ createRoot(document.getElementById('root')!).render(
             <Route path="/system" element={<Navigate to="/admin" replace />} />
           </Routes>
         </DemoProvider>
+        </BrandingProvider>
       </AuthProvider>
     </BrowserRouter>
   </StrictMode>,

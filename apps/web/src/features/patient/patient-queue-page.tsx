@@ -9,11 +9,15 @@ import {
   CheckCircle2,
   AlertCircle,
   ChevronRight,
+  ArrowDown,
 } from 'lucide-react';
 import { useDemo, DemoPatient } from '../../lib/demo-data';
+import { useTranslation, Language } from '../../lib/use-translation';
+import { useBranding } from '../../lib/branding';
 
 const PERSONNUMMER_REGEX = /^\d{8}-\d{4}$/;
 const SESSION_KEY_PREFIX = 'vardko_queue_';
+const DEFAULT_MAX_POSTPONEMENTS = 3;
 
 function formatPersonnummer(raw: string): string {
   const digits = raw.replace(/[^\d-]/g, '');
@@ -60,9 +64,42 @@ function clearSession(clinicSlug: string) {
   } catch { /* ignore */ }
 }
 
+function LanguageSwitcher({ language, setLanguage }: { language: Language; setLanguage: (l: Language) => void }) {
+  return (
+    <div className="flex items-center gap-1 rounded-full bg-white/80 p-0.5 shadow-sm ring-1 ring-gray-200">
+      <button
+        onClick={() => setLanguage('sv')}
+        className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+          language === 'sv'
+            ? 'bg-blue-600 text-white shadow-sm'
+            : 'text-gray-500 hover:text-gray-700'
+        }`}
+      >
+        Svenska
+      </button>
+      <button
+        onClick={() => setLanguage('en')}
+        className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+          language === 'en'
+            ? 'bg-blue-600 text-white shadow-sm'
+            : 'text-gray-500 hover:text-gray-700'
+        }`}
+      >
+        English
+      </button>
+    </div>
+  );
+}
+
 export function PatientQueuePage() {
   const { clinicSlug } = useParams<{ clinicSlug: string }>();
-  const { clinicName, joinQueue, patients, stats, calledTickets } = useDemo();
+  const { clinicName, joinQueue, postponePatient, patients, stats, calledTickets } = useDemo();
+  const { t, language, setLanguage } = useTranslation();
+  const branding = useBranding();
+
+  const primary = branding.primaryColor;
+  const bg = branding.backgroundColor;
+  const textColor = branding.textColor;
 
   const [personnummer, setPersonnummer] = useState('');
   const [personnummerError, setPersonnummerError] = useState('');
@@ -71,6 +108,11 @@ export function PatientQueuePage() {
   const [calledRoom, setCalledRoom] = useState('');
   const [pulseKey, setPulseKey] = useState(0);
   const [restored, setRestored] = useState(false);
+
+  // Postpone state
+  const [postponeCount, setPostponeCount] = useState(0);
+  const [showPostponeForm, setShowPostponeForm] = useState(false);
+  const [postponePositions, setPostponePositions] = useState(1);
 
   // Restore session on mount
   useEffect(() => {
@@ -136,22 +178,35 @@ export function PatientQueuePage() {
 
   const handleJoinQueue = useCallback(() => {
     if (!PERSONNUMMER_REGEX.test(personnummer)) {
-      setPersonnummerError('Ange personnummer i formatet ÅÅÅÅMMDD-XXXX');
+      setPersonnummerError(t('queue.personnummerError'));
       return;
     }
 
     const patient = joinQueue();
     setMyTicket(patient);
     setView('queue');
+    setPostponeCount(0);
     if (clinicSlug) saveSession(clinicSlug, patient.id, patient.ticketNumber);
-  }, [personnummer, joinQueue, clinicSlug]);
+  }, [personnummer, joinQueue, clinicSlug, t]);
 
   const handleLeaveQueue = useCallback(() => {
     if (clinicSlug) clearSession(clinicSlug);
     setMyTicket(null);
     setView('initial');
     setPersonnummer('');
+    setPostponeCount(0);
+    setShowPostponeForm(false);
   }, [clinicSlug]);
+
+  const handlePostpone = useCallback(() => {
+    if (!myTicket) return;
+    const success = postponePatient(myTicket.id, postponePositions);
+    if (success) {
+      setPostponeCount(c => c + 1);
+      setShowPostponeForm(false);
+      setPostponePositions(1);
+    }
+  }, [myTicket, postponePatient, postponePositions]);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
@@ -163,51 +218,60 @@ export function PatientQueuePage() {
   // ---- Initial view ----
   if (view === 'initial') {
     return (
-      <div className="min-h-screen bg-gradient-to-b from-blue-50 to-white px-4 py-8">
+      <div className="min-h-screen px-4 py-8" style={{ background: `linear-gradient(to bottom, ${bg}, white)`, fontFamily: branding.fontFamily }}>
         <div className="mx-auto max-w-md">
+          {/* Language switcher */}
+          <div className="mb-4 flex justify-end">
+            <LanguageSwitcher language={language} setLanguage={setLanguage} />
+          </div>
+
           {/* Header */}
           <div className="mb-10 text-center">
-            <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-blue-600 shadow-lg shadow-blue-200">
-              <Ticket className="h-8 w-8 text-white" />
+            <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl shadow-lg" style={{ backgroundColor: primary }}>
+              {branding.logoUrl ? (
+                <img src={branding.logoUrl} alt="" className="h-10 w-10 rounded-xl object-contain" />
+              ) : (
+                <Ticket className="h-8 w-8 text-white" />
+              )}
             </div>
-            <h1 className="text-3xl font-bold tracking-tight text-gray-900">VårdKö</h1>
-            <p className="mt-1 text-lg text-blue-600 font-medium">{clinicName}</p>
+            <h1 className="text-3xl font-bold tracking-tight" style={{ color: textColor }}>VårdKö</h1>
+            <p className="mt-1 text-lg font-medium" style={{ color: primary }}>{clinicName}</p>
           </div>
 
           {/* Queue stats summary */}
           <div className="mb-8 grid grid-cols-3 gap-3">
             <div className="rounded-xl bg-white p-3 text-center shadow-sm ring-1 ring-gray-100">
-              <Users className="mx-auto mb-1 h-5 w-5 text-blue-500" />
+              <Users className="mx-auto mb-1 h-5 w-5" style={{ color: primary }} />
               <p className="text-xl font-bold text-gray-900">{stats.waitingCount}</p>
-              <p className="text-xs text-gray-500">I kön</p>
+              <p className="text-xs text-gray-500">{t('queue.inQueue')}</p>
             </div>
             <div className="rounded-xl bg-white p-3 text-center shadow-sm ring-1 ring-gray-100">
-              <DoorOpen className="mx-auto mb-1 h-5 w-5 text-emerald-500" />
+              <DoorOpen className="mx-auto mb-1 h-5 w-5" style={{ color: branding.secondaryColor }} />
               <p className="text-xl font-bold text-gray-900">{stats.activeRooms}</p>
-              <p className="text-xs text-gray-500">Aktiva rum</p>
+              <p className="text-xs text-gray-500">{t('queue.activeRooms')}</p>
             </div>
             <div className="rounded-xl bg-white p-3 text-center shadow-sm ring-1 ring-gray-100">
-              <Clock className="mx-auto mb-1 h-5 w-5 text-amber-500" />
+              <Clock className="mx-auto mb-1 h-5 w-5" style={{ color: branding.accentColor }} />
               <p className="text-xl font-bold text-gray-900">~{stats.avgWaitMinutes}</p>
-              <p className="text-xs text-gray-500">Min väntan</p>
+              <p className="text-xs text-gray-500">{t('queue.avgWait')}</p>
             </div>
           </div>
 
           {/* Join form card */}
           <div className="rounded-2xl bg-white p-6 shadow-md ring-1 ring-gray-100">
-            <h2 className="mb-1 text-lg font-semibold text-gray-900">Ställ dig i kön</h2>
+            <h2 className="mb-1 text-lg font-semibold text-gray-900">{t('queue.joinQueueTitle')}</h2>
             <p className="mb-5 text-sm text-gray-500">
-              Ange ditt personnummer för att ta en kölapp.
+              {t('queue.joinQueueSubtitle')}
             </p>
 
             <label htmlFor="personnummer" className="mb-1.5 block text-sm font-medium text-gray-700">
-              Personnummer
+              {t('queue.personnummerLabel')}
             </label>
             <input
               id="personnummer"
               type="text"
               inputMode="numeric"
-              placeholder="ÅÅÅÅMMDD-XXXX"
+              placeholder={t('queue.personnummerPlaceholder')}
               value={personnummer}
               onChange={handlePersonnummerChange}
               onKeyDown={handleKeyDown}
@@ -227,15 +291,16 @@ export function PatientQueuePage() {
 
             <button
               onClick={handleJoinQueue}
-              className="mt-5 flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-6 py-3.5 text-base font-semibold text-white shadow-sm transition-all hover:bg-blue-700 active:scale-[0.98]"
+              className="mt-5 flex w-full items-center justify-center gap-2 rounded-xl px-6 py-3.5 text-base font-semibold text-white shadow-sm transition-all active:scale-[0.98]"
+              style={{ backgroundColor: primary }}
             >
-              Ställ dig i kön
+              {t('patient.joinQueue')}
               <ChevronRight className="h-5 w-5" />
             </button>
           </div>
 
           <p className="mt-6 text-center text-xs text-gray-400">
-            Ditt personnummer lagras aldrig utan används enbart för identifiering vid besöket.
+            {t('queue.personnummerDisclaimer')}
           </p>
         </div>
       </div>
@@ -247,6 +312,11 @@ export function PatientQueuePage() {
     return (
       <div className="min-h-screen bg-gradient-to-b from-emerald-50 to-white px-4 py-8">
         <div className="mx-auto max-w-md">
+          {/* Language switcher */}
+          <div className="mb-4 flex justify-end">
+            <LanguageSwitcher language={language} setLanguage={setLanguage} />
+          </div>
+
           {/* Pulsing success header */}
           <div className="mb-8 text-center">
             <div
@@ -255,13 +325,13 @@ export function PatientQueuePage() {
             >
               <CheckCircle2 className="h-10 w-10 text-white" />
             </div>
-            <h1 className="text-2xl font-bold text-emerald-800">Din tur!</h1>
+            <h1 className="text-2xl font-bold text-emerald-800">{t('queue.yourTurn', { roomName: calledRoom }).split('!')[0]}!</h1>
           </div>
 
           {/* Room card */}
           <div className="mb-6 rounded-2xl bg-white p-8 text-center shadow-lg ring-2 ring-emerald-200">
             <p className="mb-2 text-sm font-medium uppercase tracking-wider text-emerald-600">
-              Gå till
+              {t('queue.goTo')}
             </p>
             <p className="text-5xl font-extrabold tracking-tight text-gray-900">
               {calledRoom}
@@ -278,8 +348,7 @@ export function PatientQueuePage() {
           {/* Instruction */}
           <div className="rounded-xl bg-emerald-50 p-4 text-center ring-1 ring-emerald-100">
             <p className="text-sm text-emerald-800">
-              Vänligen bege dig till <span className="font-semibold">{calledRoom}</span> nu.
-              Personalen väntar på dig.
+              {t('queue.goToInstruction', { room: calledRoom })}
             </p>
           </div>
 
@@ -287,7 +356,7 @@ export function PatientQueuePage() {
             onClick={handleLeaveQueue}
             className="mt-8 flex w-full items-center justify-center gap-2 rounded-xl border-2 border-gray-200 bg-white px-6 py-3 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-50"
           >
-            Stäng
+            {t('common.close')}
           </button>
         </div>
       </div>
@@ -298,34 +367,40 @@ export function PatientQueuePage() {
   const position = myTicket?.position ?? 0;
   const estimatedWait = myTicket?.estimatedWaitMinutes ?? 0;
   const progressPercent = position <= 1 ? 90 : Math.max(10, 100 - position * 15);
+  const canPostpone = postponeCount < DEFAULT_MAX_POSTPONEMENTS;
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-blue-50 to-white px-4 py-8">
+    <div className="min-h-screen px-4 py-8" style={{ background: `linear-gradient(to bottom, ${bg}, white)`, fontFamily: branding.fontFamily }}>
       <div className="mx-auto max-w-md">
+        {/* Language switcher */}
+        <div className="mb-4 flex justify-end">
+          <LanguageSwitcher language={language} setLanguage={setLanguage} />
+        </div>
+
         {/* Status bar */}
-        <div className="mb-6 flex items-center justify-between rounded-xl bg-blue-600 px-4 py-3 text-sm text-white shadow-md">
+        <div className="mb-6 flex items-center justify-between rounded-xl px-4 py-3 text-sm text-white shadow-md" style={{ backgroundColor: primary }}>
           <div className="flex items-center gap-1.5">
             <Users className="h-4 w-4" />
-            <span>{stats.waitingCount} personer väntar</span>
+            <span>{t('queue.peopleWaiting', { count: stats.waitingCount })}</span>
           </div>
           <div className="flex items-center gap-1.5">
             <DoorOpen className="h-4 w-4" />
-            <span>{stats.activeRooms} rum aktiva</span>
+            <span>{t('queue.roomsActive', { count: stats.activeRooms })}</span>
           </div>
         </div>
 
         {/* Header */}
         <div className="mb-6 text-center">
-          <p className="text-sm font-medium text-blue-600">{clinicName}</p>
-          <h1 className="text-xl font-bold text-gray-900">Du står i kön</h1>
+          <p className="text-sm font-medium" style={{ color: primary }}>{clinicName}</p>
+          <h1 className="text-xl font-bold" style={{ color: textColor }}>{t('queue.youAreInQueue')}</h1>
         </div>
 
         {/* Ticket card — boarding pass style */}
         <div className="mb-6 overflow-hidden rounded-2xl bg-white shadow-lg ring-1 ring-gray-100">
           {/* Top section */}
-          <div className="bg-blue-600 px-6 py-4 text-center text-white">
-            <p className="text-xs font-medium uppercase tracking-widest text-blue-200">
-              Ditt könummer
+          <div className="px-6 py-4 text-center text-white" style={{ backgroundColor: primary }}>
+            <p className="text-xs font-medium uppercase tracking-widest" style={{ opacity: 0.7 }}>
+              {t('queue.yourTicketNumber')}
             </p>
             <p className="mt-1 font-mono text-6xl font-extrabold tracking-tight">
               {myTicket?.ticketNumber}
@@ -334,8 +409,8 @@ export function PatientQueuePage() {
 
           {/* Perforated divider */}
           <div className="relative">
-            <div className="absolute -left-3 -top-3 h-6 w-6 rounded-full bg-blue-50" />
-            <div className="absolute -right-3 -top-3 h-6 w-6 rounded-full bg-blue-50" />
+            <div className="absolute -left-3 -top-3 h-6 w-6 rounded-full" style={{ backgroundColor: bg }} />
+            <div className="absolute -right-3 -top-3 h-6 w-6 rounded-full" style={{ backgroundColor: bg }} />
             <div className="border-t-2 border-dashed border-gray-200" />
           </div>
 
@@ -343,20 +418,20 @@ export function PatientQueuePage() {
           <div className="grid grid-cols-2 gap-4 px-6 py-5">
             <div className="text-center">
               <p className="text-xs font-medium uppercase tracking-wider text-gray-400">
-                Plats i kön
+                {t('queue.positionInQueue')}
               </p>
               <p className="mt-1 text-3xl font-bold text-gray-900">{position}</p>
             </div>
             <div className="text-center">
               <p className="text-xs font-medium uppercase tracking-wider text-gray-400">
-                Beräknad väntan
+                {t('queue.estimatedWaitLabel')}
               </p>
               <div className="mt-1 flex items-center justify-center gap-1">
-                <Clock className="h-5 w-5 text-blue-500" />
+                <Clock className="h-5 w-5" style={{ color: primary }} />
                 <span className="text-3xl font-bold text-gray-900">
                   {estimatedWait}
                 </span>
-                <span className="text-sm text-gray-500">min</span>
+                <span className="text-sm text-gray-500">{t('queue.minUnit')}</span>
               </div>
             </div>
           </div>
@@ -365,23 +440,87 @@ export function PatientQueuePage() {
           <div className="px-6 pb-5">
             <div className="h-2 overflow-hidden rounded-full bg-gray-100">
               <div
-                className="h-full rounded-full bg-blue-500 transition-all duration-1000 ease-out"
-                style={{ width: `${progressPercent}%` }}
+                className="h-full rounded-full transition-all duration-1000 ease-out"
+                style={{ width: `${progressPercent}%`, backgroundColor: primary }}
               />
             </div>
             <p className="mt-2 text-center text-xs text-gray-400">
               {position === 1
-                ? 'Du är näst på tur!'
-                : `${position - 1} ${position - 1 === 1 ? 'person' : 'personer'} före dig`}
+                ? t('queue.nextInLine')
+                : t('queue.peopleBefore', {
+                    count: position - 1,
+                    word: position - 1 === 1 ? t('queue.personSingular') : t('queue.personPlural'),
+                  })}
             </p>
           </div>
         </div>
 
         {/* Helpful tips */}
-        <div className="mb-6 rounded-xl bg-blue-50 p-4 ring-1 ring-blue-100">
+        <div className="mb-4 rounded-xl bg-blue-50 p-4 ring-1 ring-blue-100">
           <p className="text-sm text-blue-800">
-            Stanna i närheten. Vi visar en avisering här när det är din tur.
+            {t('queue.stayNearby')}
           </p>
+        </div>
+
+        {/* Postpone button / form */}
+        <div className="mb-4">
+          {canPostpone ? (
+            <>
+              {!showPostponeForm ? (
+                <button
+                  onClick={() => setShowPostponeForm(true)}
+                  className="flex w-full items-center justify-center gap-2 rounded-xl border-2 border-amber-300 bg-white px-6 py-3 text-sm font-medium text-amber-700 transition-colors hover:bg-amber-50 active:scale-[0.98]"
+                >
+                  <ArrowDown className="h-4 w-4" />
+                  {t('queue.postponeButton')}
+                </button>
+              ) : (
+                <div className="rounded-xl border-2 border-amber-300 bg-amber-50 p-4">
+                  <label
+                    htmlFor="postpone-positions"
+                    className="mb-2 block text-sm font-medium text-amber-800"
+                  >
+                    {t('queue.postponeLabel')}
+                  </label>
+                  <input
+                    id="postpone-positions"
+                    type="number"
+                    min={1}
+                    max={10}
+                    value={postponePositions}
+                    onChange={e => {
+                      const val = Math.max(1, Math.min(10, Number(e.target.value) || 1));
+                      setPostponePositions(val);
+                    }}
+                    className="mb-3 w-full rounded-lg border border-amber-300 bg-white px-3 py-2 text-center text-lg font-mono outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500"
+                  />
+                  <div className="flex gap-2">
+                    <button
+                      onClick={handlePostpone}
+                      className="flex-1 rounded-lg bg-amber-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-amber-700 active:scale-[0.98]"
+                    >
+                      {t('common.confirm')}
+                    </button>
+                    <button
+                      onClick={() => {
+                        setShowPostponeForm(false);
+                        setPostponePositions(1);
+                      }}
+                      className="flex-1 rounded-lg border border-amber-300 bg-white px-4 py-2 text-sm font-medium text-amber-700 transition-colors hover:bg-amber-50"
+                    >
+                      {t('common.cancel')}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </>
+          ) : (
+            <div className="rounded-xl bg-amber-50 p-3 text-center ring-1 ring-amber-200">
+              <p className="text-xs text-amber-700">
+                {t('queue.postponeMaxReached', { max: DEFAULT_MAX_POSTPONEMENTS })}
+              </p>
+            </div>
+          )}
         </div>
 
         {/* Leave queue */}
@@ -390,7 +529,7 @@ export function PatientQueuePage() {
           className="flex w-full items-center justify-center gap-2 rounded-xl border-2 border-red-200 bg-white px-6 py-3 text-sm font-medium text-red-600 transition-colors hover:bg-red-50 active:scale-[0.98]"
         >
           <LogOut className="h-4 w-4" />
-          Lämna kön
+          {t('patient.leaveQueue')}
         </button>
       </div>
     </div>

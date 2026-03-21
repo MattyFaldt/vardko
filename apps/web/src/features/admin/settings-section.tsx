@@ -14,8 +14,13 @@ import {
   ExternalLink,
   Code,
   Monitor,
+  Palette,
+  Download,
+  Image,
 } from 'lucide-react';
 import { useDemo } from '../../lib/demo-data';
+import { QrCodeSvg, downloadQrPng, copyQrToClipboard } from '../../components/qr-code';
+import { useBranding, useBrandingUpdate, DEFAULT_BRANDING, type ClinicBranding } from '../../lib/branding';
 
 function generateQrSlug(): string {
   const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
@@ -26,8 +31,17 @@ function generateQrSlug(): string {
   return result;
 }
 
+const FONT_OPTIONS = [
+  { label: 'System (standard)', value: 'system-ui, sans-serif' },
+  { label: 'Inter', value: "'Inter', sans-serif" },
+  { label: 'Roboto', value: "'Roboto', sans-serif" },
+  { label: 'Open Sans', value: "'Open Sans', sans-serif" },
+];
+
 export function SettingsSection() {
   const { clinicSlug, clinicName, clinicSettings, updateClinicSettings } = useDemo();
+  const branding = useBranding();
+  const updateBranding = useBrandingUpdate();
 
   const [maxDefer, setMaxDefer] = useState(clinicSettings.maxPostponements);
   const [maxQueueSize, setMaxQueueSize] = useState(clinicSettings.maxQueueSize);
@@ -43,6 +57,10 @@ export function SettingsSection() {
   const [showEmbed, setShowEmbed] = useState(false);
   const [savedSection, setSavedSection] = useState<string | null>(null);
   const [securityConfirm, setSecurityConfirm] = useState<string | null>(null);
+  const [qrCopied, setQrCopied] = useState(false);
+
+  // Branding form state
+  const [brandForm, setBrandForm] = useState<ClinicBranding>({ ...branding });
 
   const queueUrl = `${baseUrl}/queue/${qrToken}`;
   const qrApiUrl = `${baseUrl}/qr/${qrToken}`;
@@ -87,6 +105,27 @@ export function SettingsSection() {
     navigator.clipboard.writeText(text);
     setCopied(label);
     setTimeout(() => setCopied(null), 2000);
+  }
+
+  function handleSaveBranding() {
+    updateBranding(brandForm);
+    showSaved('branding');
+  }
+
+  function updateBrandField<K extends keyof ClinicBranding>(key: K, value: ClinicBranding[K]) {
+    setBrandForm((prev) => ({ ...prev, [key]: value }));
+  }
+
+  async function handleCopyQr() {
+    try {
+      await copyQrToClipboard(queueUrl);
+      setQrCopied(true);
+      setTimeout(() => setQrCopied(false), 2000);
+    } catch {
+      // Fallback: copy data URL as text
+      setCopied('qr-image');
+      setTimeout(() => setCopied(null), 2000);
+    }
   }
 
   function CopyBtn({ text, label }: { text: string; label: string }) {
@@ -189,6 +228,138 @@ export function SettingsSection() {
         </div>
       </div>
 
+      {/* ══════════ Branding ══════════ */}
+      <div className="bg-white rounded-xl shadow-sm p-4 sm:p-6 space-y-5">
+        <div className="flex items-center gap-2">
+          <Palette className="w-5 h-5 text-purple-600" />
+          <h3 className="text-sm font-semibold text-gray-900">Varumärke</h3>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label className="block text-xs font-medium text-gray-500 mb-1">Klinikens namn</label>
+            <input type="text" value={brandForm.clinicName}
+              onChange={e => updateBrandField('clinicName', e.target.value)}
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm min-h-[44px]"
+              placeholder="VårdKö" />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-500 mb-1">
+              <Image className="w-3.5 h-3.5 inline mr-1" />
+              Logotyp-URL
+            </label>
+            <input type="url" value={brandForm.logoUrl ?? ''}
+              onChange={e => updateBrandField('logoUrl', e.target.value || null)}
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm min-h-[44px]"
+              placeholder="https://exempel.se/logo.png" />
+          </div>
+        </div>
+
+        {brandForm.logoUrl && (
+          <div className="flex items-center gap-3">
+            <span className="text-xs text-gray-500">Förhandsgranskning:</span>
+            <img src={brandForm.logoUrl} alt="Logotyp" className="h-10 w-auto rounded border border-gray-200 object-contain"
+              onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+          </div>
+        )}
+
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
+          <div>
+            <label className="block text-xs font-medium text-gray-500 mb-1">Primärfärg</label>
+            <div className="flex items-center gap-2">
+              <input type="color" value={brandForm.primaryColor}
+                onChange={e => updateBrandField('primaryColor', e.target.value)}
+                className="w-10 h-10 rounded-lg border border-gray-300 cursor-pointer p-0.5" />
+              <span className="text-xs font-mono text-gray-400">{brandForm.primaryColor}</span>
+            </div>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-500 mb-1">Sekundärfärg</label>
+            <div className="flex items-center gap-2">
+              <input type="color" value={brandForm.secondaryColor}
+                onChange={e => updateBrandField('secondaryColor', e.target.value)}
+                className="w-10 h-10 rounded-lg border border-gray-300 cursor-pointer p-0.5" />
+              <span className="text-xs font-mono text-gray-400">{brandForm.secondaryColor}</span>
+            </div>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-500 mb-1">Accentfärg</label>
+            <div className="flex items-center gap-2">
+              <input type="color" value={brandForm.accentColor}
+                onChange={e => updateBrandField('accentColor', e.target.value)}
+                className="w-10 h-10 rounded-lg border border-gray-300 cursor-pointer p-0.5" />
+              <span className="text-xs font-mono text-gray-400">{brandForm.accentColor}</span>
+            </div>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-500 mb-1">Bakgrundsfärg</label>
+            <div className="flex items-center gap-2">
+              <input type="color" value={brandForm.backgroundColor}
+                onChange={e => updateBrandField('backgroundColor', e.target.value)}
+                className="w-10 h-10 rounded-lg border border-gray-300 cursor-pointer p-0.5" />
+              <span className="text-xs font-mono text-gray-400">{brandForm.backgroundColor}</span>
+            </div>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-500 mb-1">Textfärg</label>
+            <div className="flex items-center gap-2">
+              <input type="color" value={brandForm.textColor}
+                onChange={e => updateBrandField('textColor', e.target.value)}
+                className="w-10 h-10 rounded-lg border border-gray-300 cursor-pointer p-0.5" />
+              <span className="text-xs font-mono text-gray-400">{brandForm.textColor}</span>
+            </div>
+          </div>
+        </div>
+
+        <div>
+          <label className="block text-xs font-medium text-gray-500 mb-1">Typsnitt</label>
+          <select value={brandForm.fontFamily}
+            onChange={e => updateBrandField('fontFamily', e.target.value)}
+            className="w-full sm:w-64 rounded-lg border border-gray-300 px-3 py-2 text-sm min-h-[44px] bg-white">
+            {FONT_OPTIONS.map(f => <option key={f.value} value={f.value}>{f.label}</option>)}
+          </select>
+        </div>
+
+        {/* Live preview */}
+        <div>
+          <p className="text-xs font-medium text-gray-500 mb-2">Förhandsgranskning — patientvy</p>
+          <div className="rounded-xl border border-gray-200 overflow-hidden max-w-sm"
+            style={{ backgroundColor: brandForm.backgroundColor, fontFamily: brandForm.fontFamily }}>
+            <div className="px-4 py-3 flex items-center gap-2" style={{ backgroundColor: brandForm.primaryColor }}>
+              {brandForm.logoUrl ? (
+                <img src={brandForm.logoUrl} alt="" className="h-6 w-6 rounded object-contain bg-white/20" />
+              ) : (
+                <div className="h-6 w-6 rounded flex items-center justify-center bg-white/20">
+                  <span className="text-white text-[10px] font-bold">VK</span>
+                </div>
+              )}
+              <span className="text-white text-sm font-semibold">{brandForm.clinicName || 'VårdKö'}</span>
+            </div>
+            <div className="p-4 space-y-3">
+              <div className="text-center">
+                <p className="text-xs font-medium" style={{ color: brandForm.primaryColor }}>Ditt könummer</p>
+                <p className="text-3xl font-extrabold font-mono" style={{ color: brandForm.textColor }}>42</p>
+              </div>
+              <div className="h-1.5 rounded-full overflow-hidden" style={{ backgroundColor: brandForm.primaryColor + '20' }}>
+                <div className="h-full w-3/4 rounded-full" style={{ backgroundColor: brandForm.primaryColor }} />
+              </div>
+              <button className="w-full py-2 rounded-lg text-white text-xs font-semibold"
+                style={{ backgroundColor: brandForm.primaryColor }} type="button">
+                Ställ dig i kön
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex justify-end pt-2">
+          <button onClick={handleSaveBranding}
+            className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg text-white text-sm font-semibold transition-colors min-h-[44px] ${savedSection === 'branding' ? 'bg-green-600 hover:bg-green-700' : 'bg-purple-600 hover:bg-purple-700'}`}>
+            {savedSection === 'branding' ? <Check className="w-4 h-4" /> : <Save className="w-4 h-4" />}
+            {savedSection === 'branding' ? 'Sparat!' : 'Spara'}
+          </button>
+        </div>
+      </div>
+
       {/* ══════════ QR-kod ══════════ */}
       <div className="bg-white rounded-xl shadow-sm p-4 sm:p-6 space-y-5">
         <div className="flex items-center gap-2">
@@ -197,11 +368,23 @@ export function SettingsSection() {
         </div>
 
         <div className="flex flex-col sm:flex-row gap-5">
-          <div className="flex flex-col items-center gap-3 p-4 bg-white border-2 border-dashed border-gray-200 rounded-xl sm:min-w-[180px]">
-            <div className="w-36 h-36 bg-gray-100 rounded-lg flex items-center justify-center">
-              <QrCode className="w-20 h-20 text-gray-400" />
-            </div>
+          <div className="flex flex-col items-center gap-3 p-4 bg-white border-2 border-dashed border-gray-200 rounded-xl sm:min-w-[200px]">
+            <QrCodeSvg url={queueUrl} size={160} className="rounded-lg" />
             <p className="text-[10px] text-gray-500 text-center font-mono break-all max-w-[160px]">{queueUrl}</p>
+            <div className="flex gap-2">
+              <button
+                onClick={() => downloadQrPng(queueUrl, `vardko-qr-${clinicSlug}.png`)}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-200 text-xs font-medium text-gray-600 hover:bg-gray-50 transition-colors min-h-[36px]">
+                <Download className="w-3.5 h-3.5" />
+                Ladda ner PNG
+              </button>
+              <button
+                onClick={handleCopyQr}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-200 text-xs font-medium text-gray-600 hover:bg-gray-50 transition-colors min-h-[36px]">
+                {qrCopied ? <Check className="w-3.5 h-3.5 text-green-600" /> : <Copy className="w-3.5 h-3.5" />}
+                {qrCopied ? 'Kopierad!' : 'Kopiera QR-kod'}
+              </button>
+            </div>
           </div>
 
           <div className="flex-1 space-y-3">

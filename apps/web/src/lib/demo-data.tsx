@@ -75,6 +75,7 @@ interface DemoContextValue {
   calledTickets: Array<{ ticketNumber: number; roomName: string }>;
   // Queue operations
   joinQueue: () => DemoPatient;
+  postponePatient: (patientId: string, positionsBack: number) => boolean;
   callNextPatient: (roomId: string) => DemoPatient | null;
   completePatient: (roomId: string) => void;
   markNoShow: (roomId: string) => void;
@@ -206,6 +207,36 @@ export function DemoProvider({ children }: { children: ReactNode }) {
     return newPatient;
   }, [nextTicket, patients]);
 
+  const postponePatient = useCallback((patientId: string, positionsBack: number): boolean => {
+    const waiting = patients.filter(p => p.status === 'waiting').sort((a, b) => a.position - b.position);
+    const patientIndex = waiting.findIndex(p => p.id === patientId);
+    if (patientIndex === -1) return false;
+    // Can't move back if already at the end or beyond
+    if (patientIndex + positionsBack >= waiting.length) return false;
+
+    // Remove the patient from the waiting array and reinsert further back
+    const patient = waiting[patientIndex]!;
+    const newWaiting = [...waiting];
+    newWaiting.splice(patientIndex, 1);
+    const newIndex = patientIndex + positionsBack;
+    newWaiting.splice(newIndex, 0, patient);
+
+    // Recalculate positions
+    const positionMap = new Map<string, number>();
+    newWaiting.forEach((p, idx) => {
+      positionMap.set(p.id, idx + 1);
+    });
+
+    setPatients(prev => prev.map(p => {
+      if (p.status !== 'waiting') return p;
+      const newPos = positionMap.get(p.id);
+      if (newPos === undefined) return p;
+      return { ...p, position: newPos, estimatedWaitMinutes: newPos * 7 };
+    }));
+
+    return true;
+  }, [patients]);
+
   const callNextPatient = useCallback((roomId: string) => {
     const next = patients.filter(p => p.status === 'waiting').sort((a, b) => a.position - b.position)[0];
     if (!next) return null;
@@ -313,7 +344,7 @@ export function DemoProvider({ children }: { children: ReactNode }) {
       patients, rooms, staff, clinics, clinicSettings, stats, calledTickets,
       clinicName: 'Kungsholmens Vårdcentral', clinicSlug: clinicSettings.qrToken,
       currentUserRole, setCurrentUserRole,
-      joinQueue, callNextPatient, completePatient, markNoShow,
+      joinQueue, postponePatient, callNextPatient, completePatient, markNoShow,
       toggleRoomPause, openRoom, closeRoom,
       addRoom, updateRoom, removeRoom,
       addStaffMember, updateStaffMember, removeStaffMember,
