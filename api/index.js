@@ -1509,10 +1509,14 @@ async function serviceSetupInitialize(body) {
     return { statusCode: 409, response: createErrorResponse(ERROR_CODES.CONFLICT, 'System already initialized') };
   }
 
+  // Generate org slug from name
+  const orgSlug = organizationName.toLowerCase().replace(/[åä]/g, 'a').replace(/[ö]/g, 'o').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+
   const { data: org, error: orgErr } = await supabase
     .from('organizations')
     .insert({
       name: organizationName,
+      slug: orgSlug,
       is_active: true,
     })
     .select()
