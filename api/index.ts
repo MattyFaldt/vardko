@@ -13,7 +13,9 @@ import { cors } from 'hono/cors';
 import { handle } from 'hono/vercel';
 import { SignJWT, jwtVerify } from 'jose';
 import { z } from 'zod';
-import { randomBytes } from 'node:crypto';
+import crypto from 'crypto';
+
+const randomBytes = crypto.randomBytes;
 
 // =============================================================================
 // Runtime config — tell Vercel to use the Node.js runtime (not Edge)
