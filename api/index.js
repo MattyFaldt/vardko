@@ -163,6 +163,7 @@ const updateRoomSchema = z.object({
   name: z.string().min(1).max(100).optional(),
   displayOrder: z.number().int().min(0).optional(),
   isActive: z.boolean().optional(),
+  status: z.enum(['open', 'closed', 'paused', 'occupied']).optional(),
 });
 
 const passwordSchema = z
@@ -1221,6 +1222,7 @@ module.exports = async function handler(req, res) {
       if (updates.name !== undefined) dbUpdates.name = updates.name;
       if (updates.displayOrder !== undefined) dbUpdates.display_order = updates.displayOrder;
       if (updates.isActive !== undefined) dbUpdates.is_active = updates.isActive;
+      if (updates.status !== undefined) dbUpdates.status = updates.status;
 
       const { data: updated, error: updateErr } = await supabase
         .from('rooms')
@@ -1667,6 +1669,160 @@ module.exports = async function handler(req, res) {
           memoryUsage: process.memoryUsage(),
         }),
       );
+    }
+
+    // =====================================================================
+    // ADMIN SETTINGS & BRANDING ROUTES
+    // =====================================================================
+
+    // PUT /api/v1/admin/settings
+    if (method === 'PUT' && pathname === '/api/v1/admin/settings') {
+      const body = await parseBody(req);
+
+      // Get the clinic to update
+      const { data: clinic } = await supabase
+        .from('clinics')
+        .select('id, settings')
+        .eq('is_active', true)
+        .limit(1)
+        .single();
+
+      if (!clinic) return res.status(404).json(createErrorResponse('NOT_FOUND', 'Clinic not found'));
+
+      // Merge new settings into existing
+      const currentSettings = clinic.settings || {};
+      const newSettings = { ...currentSettings, ...body };
+
+      await supabase.from('clinics').update({ settings: newSettings }).eq('id', clinic.id);
+      await addAuditEntry('settings.updated', 'clinic', clinic.id);
+
+      return res.status(200).json(createSuccessResponse(newSettings));
+    }
+
+    // GET /api/v1/admin/settings
+    if (method === 'GET' && pathname === '/api/v1/admin/settings') {
+      const { data: clinic } = await supabase
+        .from('clinics')
+        .select('id, settings, default_language, timezone, qr_code_secret')
+        .eq('is_active', true)
+        .limit(1)
+        .single();
+
+      if (!clinic) return res.status(404).json(createErrorResponse('NOT_FOUND', 'Clinic not found'));
+
+      const settings = clinic.settings || {};
+      return res.status(200).json(createSuccessResponse({
+        maxPostponements: settings.maxPostponements || 3,
+        maxQueueSize: settings.maxQueueSize || 200,
+        noShowTimeoutSeconds: settings.noShowTimeoutSeconds || 180,
+        openHour: settings.openHour || 7,
+        closeHour: settings.closeHour || 17,
+        language: clinic.default_language || 'sv',
+        qrToken: settings.qrToken || clinic.id,
+      }));
+    }
+
+    // PUT /api/v1/admin/branding
+    if (method === 'PUT' && pathname === '/api/v1/admin/branding') {
+      const body = await parseBody(req);
+      const { data: clinic } = await supabase.from('clinics').select('id, settings').eq('is_active', true).limit(1).single();
+      if (!clinic) return res.status(404).json(createErrorResponse('NOT_FOUND', 'Clinic not found'));
+
+      const currentSettings = clinic.settings || {};
+      const newSettings = { ...currentSettings, branding: body };
+      await supabase.from('clinics').update({ settings: newSettings }).eq('id', clinic.id);
+      await addAuditEntry('branding.updated', 'clinic', clinic.id);
+
+      return res.status(200).json(createSuccessResponse(body));
+    }
+
+    // GET /api/v1/admin/branding
+    if (method === 'GET' && pathname === '/api/v1/admin/branding') {
+      const { data: clinic } = await supabase.from('clinics').select('id, settings, name').eq('is_active', true).limit(1).single();
+      if (!clinic) return res.status(404).json(createErrorResponse('NOT_FOUND', 'Clinic not found'));
+
+      const branding = (clinic.settings || {}).branding || {};
+      return res.status(200).json(createSuccessResponse({
+        primaryColor: branding.primaryColor || '#2563eb',
+        secondaryColor: branding.secondaryColor || '#16a34a',
+        accentColor: branding.accentColor || '#f59e0b',
+        logoUrl: branding.logoUrl || null,
+        clinicName: branding.clinicName || clinic.name,
+        backgroundColor: branding.backgroundColor || '#eff6ff',
+        textColor: branding.textColor || '#1e293b',
+        fontFamily: branding.fontFamily || 'system-ui, sans-serif',
+      }));
+    }
+
+    // PUT /api/v1/admin/rooms/:roomId/assign — Assign staff to room
+    match = pathname.match(/^\/api\/v1\/admin\/rooms\/([^/]+)\/assign$/);
+    if (method === 'PUT' && match) {
+      const roomId = match[1];
+      const body = await parseBody(req);
+      const staffId = body.staffId || null;
+
+      // Unassign any staff currently on this room
+      await supabase.from('rooms').update({ current_staff_id: null }).eq('current_staff_id', staffId);
+
+      // Assign new staff (or null to unassign)
+      await supabase.from('rooms').update({ current_staff_id: staffId }).eq('id', roomId);
+      await addAuditEntry('room.staff_assigned', 'room', roomId);
+
+      return res.status(200).json(createSuccessResponse({ roomId, staffId }));
+    }
+
+    // =====================================================================
+    // ORG ROUTES — /api/v1/org/*
+    // =====================================================================
+
+    // POST /api/v1/org/clinics — Create clinic (for org_admin)
+    if (method === 'POST' && pathname === '/api/v1/org/clinics') {
+      const body = await parseBody(req);
+      const name = body.name;
+      const slug = body.slug;
+      if (!name || !slug) return res.status(400).json(createErrorResponse('INVALID_INPUT', 'Name and slug required'));
+
+      // Get org
+      const { data: org } = await supabase.from('organizations').select('id').limit(1).single();
+      if (!org) return res.status(404).json(createErrorResponse('NOT_FOUND', 'Organization not found'));
+
+      const { data: clinic, error } = await supabase.from('clinics').insert({
+        organization_id: org.id,
+        name,
+        slug,
+        qr_code_secret: crypto.randomBytes(32).toString('hex'),
+        daily_salt: crypto.randomBytes(32).toString('hex'),
+        daily_salt_date: new Date().toISOString().split('T')[0],
+        is_active: true,
+      }).select().single();
+
+      if (error) return res.status(500).json(createErrorResponse('INTERNAL_ERROR', error.message));
+      await addAuditEntry('clinic.created', 'clinic', clinic.id);
+
+      return res.status(201).json(createSuccessResponse({ id: clinic.id, name: clinic.name, slug: clinic.slug, status: 'active', rooms: 0, staff: 0, patientsToday: 0 }));
+    }
+
+    // DELETE /api/v1/org/clinics/:clinicId — Delete (deactivate) clinic
+    match = pathname.match(/^\/api\/v1\/org\/clinics\/([^/]+)$/);
+    if (method === 'DELETE' && match) {
+      const clinicId = match[1];
+      await supabase.from('clinics').update({ is_active: false }).eq('id', clinicId);
+      await addAuditEntry('clinic.deactivated', 'clinic', clinicId);
+      return res.status(200).json(createSuccessResponse({ message: 'Clinic deactivated' }));
+    }
+
+    // GET /api/v1/org/clinics — List clinics for org admin
+    if (method === 'GET' && pathname === '/api/v1/org/clinics') {
+      const { data: clinicList } = await supabase.from('clinics').select('id, name, slug, is_active').eq('is_active', true);
+
+      const result = [];
+      for (const c of clinicList || []) {
+        const { count: roomCount } = await supabase.from('rooms').select('*', { count: 'exact', head: true }).eq('clinic_id', c.id).eq('is_active', true);
+        const { count: staffCount } = await supabase.from('users').select('*', { count: 'exact', head: true }).eq('clinic_id', c.id).eq('is_active', true);
+        result.push({ id: c.id, name: c.name, slug: c.slug, status: c.is_active ? 'active' : 'inactive', rooms: roomCount || 0, staff: staffCount || 0, patientsToday: 0 });
+      }
+
+      return res.status(200).json(createSuccessResponse(result));
     }
 
     // =====================================================================

@@ -262,3 +262,59 @@ export async function getClinicInfoApi(clinicSlug: string) {
     status: string;
   }>(`/clinics/${clinicSlug}`);
 }
+
+// ---------------------------------------------------------------------------
+// Admin — Settings
+// ---------------------------------------------------------------------------
+
+export async function getSettingsApi(token: string) {
+  return apiGet<{
+    maxPostponements: number;
+    maxQueueSize: number;
+    noShowTimeoutSeconds: number;
+    openHour: number;
+    closeHour: number;
+    language: string;
+    qrToken: string;
+  }>('/admin/settings', token);
+}
+
+export async function updateSettingsApi(token: string, settings: Record<string, unknown>) {
+  return apiPut<Record<string, unknown>>('/admin/settings', settings, token);
+}
+
+// ---------------------------------------------------------------------------
+// Admin — Branding
+// ---------------------------------------------------------------------------
+
+export async function getBrandingApi(token: string) {
+  return apiGet<Record<string, unknown>>('/admin/branding', token);
+}
+
+export async function updateBrandingApi(token: string, branding: Record<string, unknown>) {
+  return apiPut<Record<string, unknown>>('/admin/branding', branding, token);
+}
+
+// ---------------------------------------------------------------------------
+// Admin — Room staff assignment
+// ---------------------------------------------------------------------------
+
+export async function assignStaffToRoomApi(token: string, roomId: string, staffId: string | null) {
+  return apiPut<{ ok: true }>(`/admin/rooms/${roomId}/assign`, { staffId }, token);
+}
+
+// ---------------------------------------------------------------------------
+// Org — Clinics
+// ---------------------------------------------------------------------------
+
+export async function getClinicsApi(token: string) {
+  return apiGet<Array<Record<string, unknown>>>('/org/clinics', token);
+}
+
+export async function addClinicApi(token: string, name: string, slug: string) {
+  return apiPost<Record<string, unknown>>('/org/clinics', { name, slug }, token);
+}
+
+export async function deleteClinicApi(token: string, clinicId: string) {
+  return apiDelete<{ ok: true }>(`/org/clinics/${clinicId}`, token);
+}

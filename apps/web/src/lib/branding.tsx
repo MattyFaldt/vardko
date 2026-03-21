@@ -1,4 +1,6 @@
-import { createContext, useContext, useState, useCallback, type ReactNode } from 'react';
+import { createContext, useContext, useState, useCallback, useEffect, type ReactNode } from 'react';
+import { useAuth } from './auth-context';
+import { getBrandingApi, updateBrandingApi } from './api-client';
 
 export interface ClinicBranding {
   primaryColor: string;
@@ -52,14 +54,33 @@ const BrandingContext = createContext<BrandingContextValue>({
 
 export function BrandingProvider({ children }: { children: ReactNode }) {
   const [branding, setBranding] = useState<ClinicBranding>(loadBranding);
+  const { accessToken, isAuthenticated } = useAuth();
+
+  // On mount (if authenticated), fetch branding from API
+  useEffect(() => {
+    if (!isAuthenticated || !accessToken) return;
+    let active = true;
+    getBrandingApi(accessToken).then((res) => {
+      if (active && res.success && res.data) {
+        const merged = { ...DEFAULT_BRANDING, ...res.data } as ClinicBranding;
+        setBranding(merged);
+        saveBranding(merged); // keep localStorage in sync
+      }
+    }).catch(() => {});
+    return () => { active = false; };
+  }, [isAuthenticated, accessToken]);
 
   const update = useCallback((updates: Partial<ClinicBranding>) => {
     setBranding((prev) => {
       const next = { ...prev, ...updates };
-      saveBranding(next);
+      saveBranding(next); // always persist to localStorage as fallback
       return next;
     });
-  }, []);
+    // Also persist to API if authenticated
+    if (accessToken) {
+      updateBrandingApi(accessToken, updates as Record<string, unknown>).catch(() => {});
+    }
+  }, [accessToken]);
 
   return (
     <BrandingContext.Provider value={{ branding, updateBranding: update }}>

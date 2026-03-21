@@ -150,11 +150,14 @@ export function ApiDataProvider({ children }: { children: ReactNode }) {
       if (!token) return; // no token = nothing to fetch for admin endpoints
 
       try {
-        const [dashRes, roomsRes, queueRes, staffRes] = await Promise.all([
+        const [dashRes, roomsRes, queueRes, staffRes, settingsRes, brandingRes, clinicsRes] = await Promise.all([
           api.getDashboardApi(token),
           api.getRoomsApi(token),
           api.getQueueListApi(token),
           api.getStaffListApi(token),
+          api.getSettingsApi(token),
+          api.getBrandingApi(token),
+          api.getClinicsApi(token),
         ]);
 
         if (!active) return;
@@ -205,6 +208,26 @@ export function ApiDataProvider({ children }: { children: ReactNode }) {
               role: s.role as DemoStaffMember['role'],
               isActive: s.isActive,
               assignedRoomId: s.assignedRoomId,
+            })),
+          );
+        }
+
+        if (settingsRes.success) {
+          setClinicSettings(settingsRes.data);
+        }
+
+        // Branding is handled by BrandingProvider — we don't update it here
+
+        if (clinicsRes.success) {
+          setClinics(
+            clinicsRes.data.map((c: Record<string, unknown>) => ({
+              id: c.id as string,
+              name: c.name as string,
+              slug: c.slug as string,
+              status: ((c.status as string) || 'active') as 'active' | 'inactive',
+              rooms: (c.rooms as number) || 0,
+              staff: (c.staff as number) || 0,
+              patientsToday: (c.patientsToday as number) || 0,
             })),
           );
         }
@@ -506,11 +529,12 @@ export function ApiDataProvider({ children }: { children: ReactNode }) {
         setRooms((prev) =>
           prev.map((r) => (r.id === roomId ? { ...r, staffName: member?.displayName ?? null } : r)),
         );
-        const token = getCurrentToken();
-        api.updateStaffApi(token, staffId, { assignedRoomId: roomId }).catch(() => {});
       } else {
         setRooms((prev) => prev.map((r) => (r.id === roomId ? { ...r, staffName: null } : r)));
       }
+
+      const token = getCurrentToken();
+      api.assignStaffToRoomApi(token, roomId, staffId).catch(() => {});
     },
     [staff],
   );
@@ -526,7 +550,8 @@ export function ApiDataProvider({ children }: { children: ReactNode }) {
         ...prev,
         { id: tempId, name: clinic.name, slug: clinic.slug, status: 'active' as const, rooms: 0, staff: 0, patientsToday: 0 },
       ]);
-      // No dedicated API endpoint for clinic creation yet — poll will reconcile if backend supports it
+      const token = getCurrentToken();
+      api.addClinicApi(token, clinic.name, clinic.slug).catch(() => {});
     },
     [],
   );
@@ -534,7 +559,8 @@ export function ApiDataProvider({ children }: { children: ReactNode }) {
   const removeClinic = useCallback(
     (id: string) => {
       setClinics((prev) => prev.filter((c) => c.id !== id));
-      // No dedicated API endpoint for clinic deletion yet
+      const token = getCurrentToken();
+      api.deleteClinicApi(token, id).catch(() => {});
     },
     [],
   );
@@ -546,7 +572,8 @@ export function ApiDataProvider({ children }: { children: ReactNode }) {
   const updateClinicSettings = useCallback(
     (updates: Partial<ClinicSettings>) => {
       setClinicSettings((prev) => ({ ...prev, ...updates }));
-      // Settings API endpoint can be added later — optimistic update for now
+      const token = getCurrentToken();
+      api.updateSettingsApi(token, updates as Record<string, unknown>).catch(() => {});
     },
     [],
   );
