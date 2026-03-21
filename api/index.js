@@ -1288,7 +1288,8 @@ module.exports = async function handler(req, res) {
       const { data: staffList } = await supabase
         .from('users')
         .select('id, organization_id, clinic_id, email, display_name, role, preferred_language, is_active, last_login_at')
-        .eq('clinic_id', clinicId);
+        .eq('is_active', true)
+        .or(clinicId ? `clinic_id.eq.${clinicId},clinic_id.is.null` : 'clinic_id.is.null');
 
       const staffArr = staffList || [];
 
