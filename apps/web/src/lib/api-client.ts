@@ -318,3 +318,15 @@ export async function addClinicApi(token: string, name: string, slug: string) {
 export async function deleteClinicApi(token: string, clinicId: string) {
   return apiDelete<{ ok: true }>(`/org/clinics/${clinicId}`, token);
 }
+
+// ---------------------------------------------------------------------------
+// Setup (initial system bootstrap)
+// ---------------------------------------------------------------------------
+
+export async function setupApi(data: Record<string, unknown>) {
+  return apiPost<{
+    accessToken: string;
+    refreshToken: string;
+    user: { id: string; displayName: string; email: string; role: string };
+  }>('/setup/initialize', data);
+}

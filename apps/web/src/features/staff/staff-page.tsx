@@ -14,7 +14,7 @@ import {
   Stethoscope,
   Hash,
 } from 'lucide-react';
-import { useDemo } from '../../lib/demo-data';
+import { useAppData } from '../../lib/demo-data';
 
 /* ------------------------------------------------------------------ */
 /*  Elapsed-time hook – ticks every second while a patient is active  */
@@ -81,7 +81,7 @@ export function StaffPage() {
     toggleRoomPause,
     openRoom,
     closeRoom,
-  } = useDemo();
+  } = useAppData();
 
   // Default to first room that has a staffName, or simply the first room.
   const defaultRoomId = useMemo(() => {
@@ -129,6 +129,30 @@ export function StaffPage() {
   const handleClose = () => {
     if (selectedRoom) closeRoom(selectedRoom.id);
   };
+
+  // Empty rooms guard
+  if (rooms.length === 0) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
+        <div className="text-center">
+          <DoorClosed className="h-16 w-16 text-gray-300 mx-auto mb-4" />
+          <p className="text-lg text-gray-500">Inga rum tillgangliga. Kontakta administratoren.</p>
+        </div>
+      </div>
+    );
+  }
+
+  // No assigned room guard
+  if (!selectedRoom) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
+        <div className="text-center">
+          <Stethoscope className="h-16 w-16 text-gray-300 mx-auto mb-4" />
+          <p className="text-lg text-gray-500">Inget rum tilldelat. Kontakta administratoren for rumstilldelning.</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -448,7 +472,7 @@ export function StaffPage() {
 /*  QueueList – shared between mobile & desktop                       */
 /* ------------------------------------------------------------------ */
 
-function QueueList({ patients }: { patients: ReturnType<typeof useDemo>['patients'] }) {
+function QueueList({ patients }: { patients: ReturnType<typeof useAppData>['patients'] }) {
   if (patients.length === 0) {
     return (
       <div className="px-5 py-8 text-center text-sm text-gray-400">

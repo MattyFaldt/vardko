@@ -1,6 +1,6 @@
 import { createContext, useContext } from 'react';
 
-export interface DemoPatient {
+export interface Patient {
   id: string;
   ticketNumber: number;
   position: number;
@@ -11,7 +11,7 @@ export interface DemoPatient {
   calledAt: Date | null;
 }
 
-export interface DemoRoom {
+export interface Room {
   id: string;
   name: string;
   status: 'open' | 'occupied' | 'paused' | 'closed';
@@ -20,7 +20,7 @@ export interface DemoRoom {
   isActive: boolean;
 }
 
-export interface DemoStaffMember {
+export interface StaffMember {
   id: string;
   displayName: string;
   email: string;
@@ -29,7 +29,7 @@ export interface DemoStaffMember {
   assignedRoomId: string | null;
 }
 
-export interface DemoStats {
+export interface DashboardStats {
   waitingCount: number;
   activeRooms: number;
   avgWaitMinutes: number;
@@ -41,7 +41,7 @@ export interface DemoStats {
 
 export type UserRole = 'superadmin' | 'org_admin' | 'clinic_admin' | 'staff';
 
-export interface DemoClinic {
+export interface Clinic {
   id: string;
   name: string;
   slug: string;
@@ -61,22 +61,22 @@ export interface ClinicSettings {
   qrToken: string;
 }
 
-interface DemoContextValue {
-  patients: DemoPatient[];
-  rooms: DemoRoom[];
-  staff: DemoStaffMember[];
-  clinics: DemoClinic[];
+interface AppDataContextValue {
+  patients: Patient[];
+  rooms: Room[];
+  staff: StaffMember[];
+  clinics: Clinic[];
   clinicSettings: ClinicSettings;
-  stats: DemoStats;
+  stats: DashboardStats;
   clinicName: string;
   clinicSlug: string;
   currentUserRole: UserRole;
   setCurrentUserRole: (role: UserRole) => void;
   calledTickets: Array<{ ticketNumber: number; roomName: string }>;
   // Queue operations
-  joinQueue: () => DemoPatient;
+  joinQueue: () => Patient;
   postponePatient: (patientId: string, positionsBack: number) => boolean;
-  callNextPatient: (roomId: string) => DemoPatient | null;
+  callNextPatient: (roomId: string) => Patient | null;
   completePatient: (roomId: string) => void;
   markNoShow: (roomId: string) => void;
   toggleRoomPause: (roomId: string) => void;
@@ -88,7 +88,7 @@ interface DemoContextValue {
   removeRoom: (id: string) => void;
   // Staff management
   addStaffMember: (member: { displayName: string; email: string; role: 'org_admin' | 'clinic_admin' | 'staff' }) => void;
-  updateStaffMember: (id: string, updates: Partial<Pick<DemoStaffMember, 'displayName' | 'email' | 'role' | 'isActive'>>) => void;
+  updateStaffMember: (id: string, updates: Partial<Pick<StaffMember, 'displayName' | 'email' | 'role' | 'isActive'>>) => void;
   removeStaffMember: (id: string) => void;
   // Staff-room assignment
   assignStaffToRoom: (roomId: string, staffId: string | null) => void;
@@ -99,10 +99,27 @@ interface DemoContextValue {
   updateClinicSettings: (updates: Partial<ClinicSettings>) => void;
 }
 
-export const DemoContext = createContext<DemoContextValue | null>(null);
+export const AppDataContext = createContext<AppDataContextValue | null>(null);
 
-export function useDemo() {
-  const ctx = useContext(DemoContext);
-  if (!ctx) throw new Error('useDemo must be used within DemoProvider');
+export function useAppData() {
+  const ctx = useContext(AppDataContext);
+  if (!ctx) throw new Error('useAppData must be used within a data provider');
   return ctx;
 }
+
+// ---------------------------------------------------------------------------
+// Backward-compatible re-exports
+// ---------------------------------------------------------------------------
+
+export type DemoPatient = Patient;
+export type DemoRoom = Room;
+export type DemoStaffMember = StaffMember;
+export type DemoStats = DashboardStats;
+export type DemoClinic = Clinic;
+export type DemoContextValue = AppDataContextValue;
+
+/** @deprecated Use AppDataContext */
+export const DemoContext = AppDataContext;
+
+/** @deprecated Use useAppData */
+export const useDemo = useAppData;

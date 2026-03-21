@@ -115,13 +115,6 @@ export function LoginPage() {
           )}
         </div>
 
-        <div className="mt-6 rounded-xl bg-blue-50 p-4 ring-1 ring-blue-100">
-          <p className="text-xs font-semibold text-blue-800 mb-2">Demokonton:</p>
-          <div className="space-y-1.5 text-xs text-blue-700">
-            <div className="flex justify-between"><span className="font-medium">Admin:</span><span className="font-mono">anna@kungsholmen.se / Admin123456!</span></div>
-            <div className="flex justify-between"><span className="font-medium">Personal:</span><span className="font-mono">erik@kungsholmen.se / Staff123456!</span></div>
-          </div>
-        </div>
       </div>
     </div>
   );
