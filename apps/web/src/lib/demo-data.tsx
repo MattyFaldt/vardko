@@ -99,7 +99,7 @@ interface DemoContextValue {
   updateClinicSettings: (updates: Partial<ClinicSettings>) => void;
 }
 
-const DemoContext = createContext<DemoContextValue | null>(null);
+export const DemoContext = createContext<DemoContextValue | null>(null);
 
 const INITIAL_CLINICS: DemoClinic[] = [
   { id: 'c1', name: 'Kungsholmens Vårdcentral', slug: 'kungsholmen', status: 'active', rooms: 5, staff: 3, patientsToday: 24 },

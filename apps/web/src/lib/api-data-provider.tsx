@@ -31,6 +31,7 @@ import type {
   ClinicSettings,
   UserRole,
 } from './demo-data';
+import { DemoContext } from './demo-data';
 
 // ---------------------------------------------------------------------------
 // Context interface — must match DemoContextValue exactly
@@ -554,7 +555,7 @@ export function ApiDataProvider({ children }: { children: ReactNode }) {
   // ---------------------------------------------------------------------------
 
   return (
-    <ApiDataContext.Provider
+    <DemoContext.Provider
       value={{
         patients,
         rooms,
@@ -588,7 +589,7 @@ export function ApiDataProvider({ children }: { children: ReactNode }) {
       }}
     >
       {children}
-    </ApiDataContext.Provider>
+    </DemoContext.Provider>
   );
 }
 
