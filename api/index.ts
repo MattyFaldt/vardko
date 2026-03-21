@@ -19,7 +19,7 @@ import { randomBytes } from 'node:crypto';
 // Runtime config — tell Vercel to use the Node.js runtime (not Edge)
 // =============================================================================
 
-export const config = { runtime: 'nodejs' };
+// Vercel uses Node.js runtime by default for api/ functions
 
 // =============================================================================
 // Inlined constants (from @vardko/shared)
