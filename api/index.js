@@ -1433,6 +1433,42 @@ async function serviceListOrganizations() {
   return { statusCode: 200, response: createSuccessResponse(orgList || []) };
 }
 
+async function serviceCreateOrganization(body, auth) {
+  const name = body.name;
+  if (!name || typeof name !== 'string' || name.trim().length === 0) {
+    return { statusCode: 400, response: createErrorResponse(ERROR_CODES.INVALID_INPUT, 'Organization name is required') };
+  }
+
+  const slug = name.toLowerCase().replace(/[åä]/g, 'a').replace(/[ö]/g, 'o').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+
+  const { data: org, error: orgErr } = await supabase
+    .from('organizations')
+    .insert({ name: name.trim(), slug, is_active: true })
+    .select()
+    .single();
+
+  if (orgErr) {
+    console.error('Org insert error:', orgErr.message);
+    return { statusCode: 500, response: createErrorResponse(ERROR_CODES.INTERNAL_ERROR, 'Failed to create organization') };
+  }
+
+  await serviceAudit('organization.created', 'organization', org.id, auth?.userId);
+
+  return { statusCode: 201, response: createSuccessResponse({ id: org.id, name: org.name, slug: org.slug, isActive: true }) };
+}
+
+async function serviceDeleteOrganization(orgId, auth) {
+  const { data: org } = await supabase.from('organizations').select('id').eq('id', orgId).single();
+  if (!org) {
+    return { statusCode: 404, response: createErrorResponse(ERROR_CODES.NOT_FOUND, 'Organization not found') };
+  }
+
+  await supabase.from('organizations').update({ is_active: false }).eq('id', orgId);
+  await serviceAudit('organization.deactivated', 'organization', orgId, auth?.userId);
+
+  return { statusCode: 200, response: createSuccessResponse({ message: 'Organization deactivated' }) };
+}
+
 function serviceSystemHealth() {
   return {
     statusCode: 200,
@@ -1981,6 +2017,18 @@ module.exports = async function handler(req, res) {
 
       if (method === 'GET' && pathname === '/api/v1/system/organizations') {
         const result = await serviceListOrganizations();
+        return res.status(result.statusCode).json(result.response);
+      }
+
+      if (method === 'POST' && pathname === '/api/v1/system/organizations') {
+        const body = await parseBody(req);
+        const result = await serviceCreateOrganization(body, auth);
+        return res.status(result.statusCode).json(result.response);
+      }
+
+      match = pathname.match(/^\/api\/v1\/system\/organizations\/([^/]+)$/);
+      if (method === 'DELETE' && match) {
+        const result = await serviceDeleteOrganization(match[1], auth);
         return res.status(result.statusCode).json(result.response);
       }
 

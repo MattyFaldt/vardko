@@ -320,6 +320,26 @@ export async function deleteClinicApi(token: string, clinicId: string) {
 }
 
 // ---------------------------------------------------------------------------
+// System (superadmin)
+// ---------------------------------------------------------------------------
+
+export async function getOrganizationsApi(token: string) {
+  return apiGet<Array<{ id: string; name: string; slug: string; is_active: boolean }>>('/system/organizations', token);
+}
+
+export async function createOrganizationApi(token: string, name: string) {
+  return apiPost<{ id: string; name: string; slug: string }>('/system/organizations', { name }, token);
+}
+
+export async function deleteOrganizationApi(token: string, orgId: string) {
+  return apiDelete<{ message: string }>(`/system/organizations/${orgId}`, token);
+}
+
+export async function getSystemHealthApi(token: string) {
+  return apiGet<{ status: string; uptime: number }>('/system/health', token);
+}
+
+// ---------------------------------------------------------------------------
 // Setup (initial system bootstrap)
 // ---------------------------------------------------------------------------
 
