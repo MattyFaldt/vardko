@@ -2,7 +2,8 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { DemoProvider } from './lib/demo-data';
-import { AuthProvider } from './lib/auth-context';
+import { ApiDataProvider } from './lib/api-data-provider';
+import { AuthProvider, useAuth } from './lib/auth-context';
 import { BrandingProvider } from './lib/branding';
 import { ProtectedRoute } from './lib/protected-route';
 import './index.css';
@@ -15,12 +16,27 @@ import { LoginPage } from './features/auth/login-page';
 import { HomePage } from './features/home/home-page';
 import { QrEmbedPage } from './features/qr/qr-embed-page';
 
+/**
+ * Switches between ApiDataProvider (when authenticated with a real token)
+ * and DemoProvider (unauthenticated / demo-mode fallback).
+ */
+function DataProviderSwitch({ children }: { children: React.ReactNode }) {
+  const { accessToken } = useAuth();
+
+  if (accessToken) {
+    return <ApiDataProvider>{children}</ApiDataProvider>;
+  }
+
+  // No real token — use DemoProvider (demo accounts, public pages)
+  return <DemoProvider>{children}</DemoProvider>;
+}
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <BrowserRouter>
       <AuthProvider>
         <BrandingProvider>
-        <DemoProvider>
+        <DataProviderSwitch>
           <Routes>
             <Route path="/" element={<HomePage />} />
             <Route path="/queue/:clinicSlug" element={<PatientQueuePage />} />
@@ -32,7 +48,7 @@ createRoot(document.getElementById('root')!).render(
             <Route path="/org" element={<Navigate to="/admin" replace />} />
             <Route path="/system" element={<Navigate to="/admin" replace />} />
           </Routes>
-        </DemoProvider>
+        </DataProviderSwitch>
         </BrandingProvider>
       </AuthProvider>
     </BrowserRouter>

@@ -1,13 +1,44 @@
 // ==========================================================================
 // VardKo Queue API — Single-file Vercel Serverless Function (CommonJS)
 // Plain Node.js handler with manual routing (no frameworks).
+// Uses Supabase PostgreSQL for persistence.
 // ==========================================================================
 
 const { SignJWT, jwtVerify } = require('jose');
 const { z } = require('zod');
 const crypto = require('crypto');
+const bcrypt = require('bcryptjs');
+const { createClient } = require('@supabase/supabase-js');
+
 const randomBytes = crypto.randomBytes;
-const createHash = crypto.createHash;
+
+// ==========================================================================
+// SUPABASE CLIENT
+// ==========================================================================
+
+const supabase = createClient(
+  process.env.SUPABASE_URL || 'https://etykcnatammfevtdyqob.supabase.co',
+  process.env.SUPABASE_ANON_KEY || ''
+);
+
+// ==========================================================================
+// SEED PASSWORD HASHES — update placeholder hashes on startup
+// ==========================================================================
+
+(async () => {
+  try {
+    const { data: users } = await supabase.from('users').select('id, password_hash');
+    for (const u of users || []) {
+      if (u.password_hash && u.password_hash.startsWith('$argon2id$placeholder')) {
+        const plainPw = u.id === 's1' ? 'Admin123456!' : 'Staff123456!';
+        const hash = await bcrypt.hash(plainPw, 10);
+        await supabase.from('users').update({ password_hash: hash }).eq('id', u.id);
+      }
+    }
+  } catch (err) {
+    console.error('Seed password hash update failed:', err.message);
+  }
+})();
 
 // ==========================================================================
 // CONSTANTS
@@ -160,157 +191,117 @@ function createErrorResponse(code, message, details) {
 }
 
 // ==========================================================================
-// UTILITY: Simple password hashing (SHA-256 based, suitable for demo/Vercel)
-// In production, use argon2 or bcrypt with a proper runtime.
+// SUPABASE HELPERS — audit log
 // ==========================================================================
 
-function hashPassword(plain) {
-  const salt = randomBytes(16).toString('hex');
-  const hash = createHash('sha256').update(salt + plain).digest('hex');
-  return salt + ':' + hash;
-}
-
-function verifyPassword(storedHash, plain) {
-  const [salt, hash] = storedHash.split(':');
-  const check = createHash('sha256').update(salt + plain).digest('hex');
-  return hash === check;
-}
-
-// ==========================================================================
-// IN-MEMORY STORES
-// ==========================================================================
-
-const ORG_ID = '00000000-0000-0000-0000-000000000001';
-const CLINIC_ID = '00000000-0000-0000-0000-000000000010';
-
-// --- Demo users (auth) ---
-const demoUsers = [];
-
-const usersReady = (async () => {
-  const entries = [
-    { id: 's1', organizationId: ORG_ID, clinicId: CLINIC_ID, email: 'anna@kungsholmen.se', displayName: 'Anna Adminsson', role: 'clinic_admin', plainPassword: 'Admin123456!' },
-    { id: 's2', organizationId: ORG_ID, clinicId: CLINIC_ID, email: 'erik@kungsholmen.se', displayName: 'Erik Eriksson', role: 'staff', plainPassword: 'Staff123456!' },
-    { id: 's3', organizationId: ORG_ID, clinicId: CLINIC_ID, email: 'maria@kungsholmen.se', displayName: 'Maria Johansson', role: 'staff', plainPassword: 'Staff123456!' },
-    { id: 's4', organizationId: ORG_ID, clinicId: CLINIC_ID, email: 'anna.l@kungsholmen.se', displayName: 'Anna Lindberg', role: 'staff', plainPassword: 'Staff123456!' },
-    { id: 's5', organizationId: ORG_ID, clinicId: CLINIC_ID, email: 'karl@kungsholmen.se', displayName: 'Karl Svensson', role: 'staff', plainPassword: 'Staff123456!' },
-    { id: 'sa1', organizationId: ORG_ID, clinicId: null, email: 'mattias.faldt@gmail.com', displayName: 'Mattias Faldt', role: 'superadmin', plainPassword: 'Gabbagabba1!' },
-  ];
-  for (const entry of entries) {
-    const { plainPassword, ...rest } = entry;
-    const passwordHash = hashPassword(plainPassword);
-    demoUsers.push({ ...rest, passwordHash });
-  }
-})();
-
-// --- Queue tickets ---
-const tickets = new Map();
-let nextTicketNumber = 1;
-
-// --- Rooms ---
-const rooms = new Map();
-
-function seedRooms() {
-  const now = new Date().toISOString();
-  const demoRooms = [
-    { id: 'room-1', organizationId: ORG_ID, clinicId: CLINIC_ID, name: 'Rum 1', displayOrder: 1, status: 'open', currentStaffId: null, currentTicketId: null, isActive: true, createdAt: now, updatedAt: now },
-    { id: 'room-2', organizationId: ORG_ID, clinicId: CLINIC_ID, name: 'Rum 2', displayOrder: 2, status: 'open', currentStaffId: null, currentTicketId: null, isActive: true, createdAt: now, updatedAt: now },
-    { id: 'room-3', organizationId: ORG_ID, clinicId: CLINIC_ID, name: 'Rum 3', displayOrder: 3, status: 'open', currentStaffId: null, currentTicketId: null, isActive: true, createdAt: now, updatedAt: now },
-  ];
-  for (const r of demoRooms) {
-    rooms.set(r.id, r);
-  }
-}
-seedRooms();
-
-// --- Staff store (admin) ---
-const staffStore = new Map();
-
-const staffNow = new Date().toISOString();
-[
-  { id: 's1', email: 'anna@kungsholmen.se', displayName: 'Anna Adminsson', role: 'clinic_admin' },
-  { id: 's2', email: 'erik@kungsholmen.se', displayName: 'Erik Eriksson', role: 'staff' },
-  { id: 's3', email: 'maria@kungsholmen.se', displayName: 'Maria Johansson', role: 'staff' },
-  { id: 's4', email: 'anna.l@kungsholmen.se', displayName: 'Anna Lindberg', role: 'staff' },
-  { id: 's5', email: 'karl@kungsholmen.se', displayName: 'Karl Svensson', role: 'staff' },
-].forEach((s) => {
-  staffStore.set(s.id, {
-    ...s,
-    organizationId: ORG_ID,
-    clinicId: CLINIC_ID,
-    isActive: true,
-    createdAt: staffNow,
-    updatedAt: staffNow,
-  });
-});
-
-// --- Clinics ---
-const clinics = new Map();
-
-const clinicNow = new Date().toISOString();
-clinics.set('kungsholmen', {
-  id: CLINIC_ID,
-  organizationId: ORG_ID,
-  name: 'Kungsholmens Vardcentral',
-  slug: 'kungsholmen',
-  address: 'Hantverkargatan 11, Stockholm',
-  timezone: 'Europe/Stockholm',
-  defaultLanguage: 'sv',
-  settings: {},
-  isActive: true,
-  createdAt: clinicNow,
-  updatedAt: clinicNow,
-});
-
-// --- SuperAdmin ---
-const superAdmins = [];
-
-const superAdminsReady = (async () => {
-  const hash = hashPassword('SuperAdmin123456!');
-  superAdmins.push({
-    id: 'sa-1',
-    email: 'superadmin@vardko.se',
-    passwordHash: hash,
-    totpSecret: 'demo-totp-secret',
-    isActive: true,
-  });
-})();
-
-// --- Organizations ---
-const organizations = new Map();
-
-const orgNow = new Date().toISOString();
-organizations.set(ORG_ID, {
-  id: ORG_ID,
-  name: 'Kungsholmen Vard AB',
-  slug: 'kungsholmen-vard',
-  settings: { maxClinics: 5 },
-  isActive: true,
-  createdAt: orgNow,
-  updatedAt: orgNow,
-});
-
-// --- Audit log ---
-const auditLog = [];
-
-function addAuditEntry(action, resourceType, resourceId, actorId) {
+async function addAuditEntry(action, resourceType, resourceId, actorId, orgId, clinicId) {
   actorId = actorId || 'system';
-  auditLog.push({
-    id: crypto.randomUUID(),
-    organizationId: ORG_ID,
-    clinicId: CLINIC_ID,
-    actorType: 'admin',
-    actorId,
-    action,
-    resourceType,
-    resourceId,
-    metadata: {},
-    ipHash: null,
-    timestamp: new Date().toISOString(),
-  });
+  try {
+    await supabase.from('audit_log').insert({
+      organization_id: orgId || null,
+      clinic_id: clinicId || null,
+      actor_type: 'admin',
+      actor_id: actorId,
+      action,
+      resource_type: resourceType,
+      resource_id: resourceId,
+      metadata: {},
+      ip_hash: null,
+    });
+  } catch (err) {
+    console.error('Audit log insert failed:', err.message);
+  }
 }
 
-// --- Refresh token store ---
-const activeRefreshTokens = new Set();
+// ==========================================================================
+// SUPABASE HELPERS — queue
+// ==========================================================================
+
+async function getWaitingTickets(clinicId) {
+  const { data, error } = await supabase
+    .from('queue_tickets')
+    .select('*')
+    .eq('clinic_id', clinicId)
+    .eq('status', 'waiting')
+    .order('position', { ascending: true });
+
+  if (error) {
+    console.error('getWaitingTickets error:', error.message);
+    return [];
+  }
+  return data || [];
+}
+
+async function recalcPositions(clinicId) {
+  const waiting = await getWaitingTickets(clinicId);
+  for (let idx = 0; idx < waiting.length; idx++) {
+    const t = waiting[idx];
+    const newPosition = idx + 1;
+    const newWait = Math.ceil((idx * DEFAULT_SERVICE_TIME_SECONDS) / 60);
+    await supabase
+      .from('queue_tickets')
+      .update({
+        position: newPosition,
+        estimated_wait_minutes: newWait,
+      })
+      .eq('id', t.id);
+  }
+}
+
+// ==========================================================================
+// SUPABASE HELPERS — staff / rooms
+// ==========================================================================
+
+function getStaffContext(req) {
+  const staffId = req.headers['x-staff-id'] || 's2';
+  // We'll look up the user's clinic from the DB in the route handler
+  return { staffId };
+}
+
+async function getStaffClinicId(staffId) {
+  const { data } = await supabase
+    .from('users')
+    .select('clinic_id')
+    .eq('id', staffId)
+    .single();
+  return data ? data.clinic_id : null;
+}
+
+async function findRoomForStaff(staffId) {
+  const { data } = await supabase
+    .from('rooms')
+    .select('*')
+    .eq('current_staff_id', staffId)
+    .limit(1)
+    .single();
+  return data || null;
+}
+
+async function assignStaffToRoom(staffId) {
+  let room = await findRoomForStaff(staffId);
+  if (room) return room;
+
+  // Find an open room with no staff assigned
+  const { data: openRoom } = await supabase
+    .from('rooms')
+    .select('*')
+    .eq('status', 'open')
+    .is('current_staff_id', null)
+    .eq('is_active', true)
+    .order('display_order', { ascending: true })
+    .limit(1)
+    .single();
+
+  if (openRoom) {
+    await supabase
+      .from('rooms')
+      .update({ current_staff_id: staffId })
+      .eq('id', openRoom.id);
+    openRoom.current_staff_id = staffId;
+    return openRoom;
+  }
+  return null;
+}
 
 // ==========================================================================
 // JWT HELPERS
@@ -324,8 +315,8 @@ async function createAccessToken(user) {
   return new SignJWT({
     userId: user.id,
     role: user.role,
-    organizationId: user.organizationId,
-    clinicId: user.clinicId,
+    organizationId: user.organization_id,
+    clinicId: user.clinic_id,
   })
     .setProtectedHeader({ alg: 'HS256' })
     .setIssuedAt()
@@ -349,50 +340,10 @@ function generateSessionToken() {
   return randomBytes(64).toString('hex');
 }
 
-function getWaitingTickets(clinicId) {
-  return Array.from(tickets.values())
-    .filter((t) => t.clinicId === clinicId && t.status === 'waiting')
-    .sort((a, b) => a.position - b.position);
-}
-
-function recalcPositions(clinicId) {
-  const waiting = getWaitingTickets(clinicId);
-  waiting.forEach((t, idx) => {
-    t.position = idx + 1;
-    t.estimatedWaitMinutes = Math.ceil((idx * DEFAULT_SERVICE_TIME_SECONDS) / 60);
-    t.updatedAt = new Date().toISOString();
-  });
-}
-
-// ==========================================================================
-// STAFF HELPERS
-// ==========================================================================
-
-function getStaffContext(req) {
-  const staffId = req.headers['x-staff-id'] || 's2';
-  return { staffId, clinicId: CLINIC_ID };
-}
-
-function findRoomForStaff(staffId) {
-  return Array.from(rooms.values()).find((r) => r.currentStaffId === staffId);
-}
-
-function assignStaffToRoom(staffId) {
-  let room = findRoomForStaff(staffId);
-  if (room) return room;
-  room = Array.from(rooms.values()).find((r) => r.status === 'open' && !r.currentStaffId && r.isActive);
-  if (room) {
-    room.currentStaffId = staffId;
-    room.updatedAt = new Date().toISOString();
-  }
-  return room;
-}
-
 // ==========================================================================
 // REQUEST HELPERS
 // ==========================================================================
 
-// Helper to parse JSON body from incoming request
 async function parseBody(req) {
   return new Promise((resolve, reject) => {
     let data = '';
@@ -404,7 +355,6 @@ async function parseBody(req) {
   });
 }
 
-// Helper to parse query string params from a URL
 function getQueryParams(url) {
   const idx = url.indexOf('?');
   if (idx === -1) return {};
@@ -421,7 +371,6 @@ function getQueryParams(url) {
   return params;
 }
 
-// Helper to strip query string from URL for route matching
 function getPathname(url) {
   const idx = url.indexOf('?');
   return idx === -1 ? url : url.slice(0, idx);
@@ -436,7 +385,6 @@ module.exports = async function handler(req, res) {
   const method = req.method || 'GET';
   const pathname = getPathname(url);
 
-  // Debug: log what URL we receive
   console.log('API handler called:', method, url, pathname);
 
   // CORS headers
@@ -474,8 +422,6 @@ module.exports = async function handler(req, res) {
 
     // POST /api/v1/auth/login
     if (method === 'POST' && pathname === '/api/v1/auth/login') {
-      await usersReady;
-
       const body = await parseBody(req);
       const parsed = loginSchema.safeParse(body);
       if (!parsed.success) {
@@ -483,20 +429,28 @@ module.exports = async function handler(req, res) {
       }
 
       const { email, password } = parsed.data;
-      const user = demoUsers.find((u) => u.email === email.trim().toLowerCase());
 
-      if (!user) {
+      const { data: user, error: userErr } = await supabase
+        .from('users')
+        .select('*')
+        .eq('email', email.trim().toLowerCase())
+        .eq('is_active', true)
+        .single();
+
+      if (userErr || !user) {
         return res.status(401).json(createErrorResponse(ERROR_CODES.INVALID_CREDENTIALS, 'Invalid email or password'));
       }
 
-      const valid = verifyPassword(user.passwordHash, password);
+      const valid = await bcrypt.compare(password, user.password_hash);
       if (!valid) {
         return res.status(401).json(createErrorResponse(ERROR_CODES.INVALID_CREDENTIALS, 'Invalid email or password'));
       }
 
+      // Update last_login_at
+      await supabase.from('users').update({ last_login_at: new Date().toISOString() }).eq('id', user.id);
+
       const accessToken = await createAccessToken(user);
       const refreshToken = await createRefreshTokenJWT(user);
-      activeRefreshTokens.add(refreshToken);
 
       return res.status(200).json(
         createSuccessResponse({
@@ -505,9 +459,9 @@ module.exports = async function handler(req, res) {
           user: {
             id: user.id,
             role: user.role,
-            clinicId: user.clinicId,
-            organizationId: user.organizationId,
-            displayName: user.displayName,
+            clinicId: user.clinic_id,
+            organizationId: user.organization_id,
+            displayName: user.display_name,
           },
         }),
       );
@@ -515,8 +469,6 @@ module.exports = async function handler(req, res) {
 
     // POST /api/v1/auth/refresh
     if (method === 'POST' && pathname === '/api/v1/auth/refresh') {
-      await usersReady;
-
       const body = await parseBody(req);
       const parsed = refreshTokenSchema.safeParse(body);
       if (!parsed.success) {
@@ -525,24 +477,23 @@ module.exports = async function handler(req, res) {
 
       const { refreshToken } = parsed.data;
 
-      if (!activeRefreshTokens.has(refreshToken)) {
-        return res.status(401).json(createErrorResponse(ERROR_CODES.INVALID_TOKEN, 'Invalid or revoked refresh token'));
-      }
-
       try {
         const { payload } = await jwtVerify(refreshToken, JWT_SECRET);
         const userId = payload.userId;
-        const user = demoUsers.find((u) => u.id === userId);
 
-        if (!user) {
+        const { data: user, error: userErr } = await supabase
+          .from('users')
+          .select('*')
+          .eq('id', userId)
+          .eq('is_active', true)
+          .single();
+
+        if (userErr || !user) {
           return res.status(401).json(createErrorResponse(ERROR_CODES.INVALID_TOKEN, 'User not found'));
         }
 
-        // Rotate refresh token
-        activeRefreshTokens.delete(refreshToken);
         const newAccessToken = await createAccessToken(user);
         const newRefreshToken = await createRefreshTokenJWT(user);
-        activeRefreshTokens.add(newRefreshToken);
 
         return res.status(200).json(
           createSuccessResponse({
@@ -551,20 +502,13 @@ module.exports = async function handler(req, res) {
           }),
         );
       } catch (_err) {
-        activeRefreshTokens.delete(refreshToken);
         return res.status(401).json(createErrorResponse(ERROR_CODES.TOKEN_EXPIRED, 'Refresh token expired'));
       }
     }
 
     // POST /api/v1/auth/logout
     if (method === 'POST' && pathname === '/api/v1/auth/logout') {
-      const body = await parseBody(req);
-      const parsed = refreshTokenSchema.safeParse(body);
-
-      if (parsed.success) {
-        activeRefreshTokens.delete(parsed.data.refreshToken);
-      }
-
+      // With DB-backed tokens we could invalidate here; for now just acknowledge
       return res.status(200).json(createSuccessResponse({ message: 'Logged out' }));
     }
 
@@ -583,46 +527,78 @@ module.exports = async function handler(req, res) {
       const { clinicId, anonymousHash, language } = parsed.data;
 
       // Check for duplicate hash (already in queue)
-      const existing = Array.from(tickets.values()).find(
-        (t) => t.clinicId === clinicId && t.anonymousHash === anonymousHash && t.status === 'waiting',
-      );
-      if (existing) {
+      const { data: existing } = await supabase
+        .from('queue_tickets')
+        .select('id')
+        .eq('clinic_id', clinicId)
+        .eq('anonymous_hash', anonymousHash)
+        .eq('status', 'waiting')
+        .limit(1);
+
+      if (existing && existing.length > 0) {
         return res.status(409).json(createErrorResponse(ERROR_CODES.ALREADY_IN_QUEUE, 'Already in queue'));
       }
 
       // Check queue capacity
-      const currentSize = getWaitingTickets(clinicId).length;
+      const waiting = await getWaitingTickets(clinicId);
+      const currentSize = waiting.length;
       if (currentSize >= MAX_QUEUE_SIZE) {
         return res.status(503).json(createErrorResponse(ERROR_CODES.QUEUE_FULL, 'Queue is full'));
       }
 
+      // Get next ticket number
+      const { data: maxResult } = await supabase.rpc('get_next_ticket_number', { p_clinic_id: clinicId });
+      let ticketNumber;
+      if (maxResult !== null && maxResult !== undefined) {
+        ticketNumber = maxResult;
+      } else {
+        // Fallback: query manually
+        const { data: maxRow } = await supabase
+          .from('queue_tickets')
+          .select('ticket_number')
+          .eq('clinic_id', clinicId)
+          .order('ticket_number', { ascending: false })
+          .limit(1);
+        ticketNumber = (maxRow && maxRow.length > 0) ? maxRow[0].ticket_number + 1 : 1;
+      }
+
+      // Get clinic's organization_id
+      const { data: clinic } = await supabase
+        .from('clinics')
+        .select('organization_id')
+        .eq('id', clinicId)
+        .single();
+
       const sessionToken = generateSessionToken();
-      const ticketNumber = nextTicketNumber++;
       const position = currentSize + 1;
       const estimatedWaitMinutes = Math.ceil((currentSize * DEFAULT_SERVICE_TIME_SECONDS) / 60);
       const now = new Date().toISOString();
 
-      const ticket = {
-        id: crypto.randomUUID(),
-        organizationId: ORG_ID,
-        clinicId,
-        ticketNumber,
-        anonymousHash,
-        status: 'waiting',
-        priority: 0,
-        position,
-        assignedRoomId: null,
-        sessionToken,
-        estimatedWaitMinutes,
-        joinedAt: now,
-        calledAt: null,
-        completedAt: null,
-        language,
-        createdAt: now,
-        updatedAt: now,
-      };
+      const { data: ticket, error: insertErr } = await supabase
+        .from('queue_tickets')
+        .insert({
+          organization_id: clinic ? clinic.organization_id : null,
+          clinic_id: clinicId,
+          ticket_number: ticketNumber,
+          anonymous_hash: anonymousHash,
+          status: 'waiting',
+          priority: 0,
+          position,
+          assigned_room_id: null,
+          session_token: sessionToken,
+          estimated_wait_minutes: estimatedWaitMinutes,
+          joined_at: now,
+          called_at: null,
+          completed_at: null,
+          language,
+        })
+        .select()
+        .single();
 
-      tickets.set(sessionToken, ticket);
+      if (insertErr) {
+        console.error('Queue join insert error:', insertErr.message);
+        return res.status(500).json(createErrorResponse(ERROR_CODES.INTERNAL_ERROR, 'Failed to join queue'));
+      }
 
       return res.status(201).json(
         createSuccessResponse({
@@ -638,19 +614,25 @@ module.exports = async function handler(req, res) {
     match = pathname.match(/^\/api\/v1\/queue\/status\/([^/]+)$/);
     if (method === 'GET' && match) {
       const sessionToken = match[1];
-      const ticket = tickets.get(sessionToken);
 
-      if (!ticket) {
+      const { data: ticket, error: ticketErr } = await supabase
+        .from('queue_tickets')
+        .select('*')
+        .eq('session_token', sessionToken)
+        .single();
+
+      if (ticketErr || !ticket) {
         return res.status(404).json(createErrorResponse(ERROR_CODES.TICKET_NOT_FOUND, 'Ticket not found'));
       }
 
-      const queueLength = getWaitingTickets(ticket.clinicId).length;
+      const waiting = await getWaitingTickets(ticket.clinic_id);
+      const queueLength = waiting.length;
 
       return res.status(200).json(
         createSuccessResponse({
-          ticketNumber: ticket.ticketNumber,
+          ticketNumber: ticket.ticket_number,
           position: ticket.position,
-          estimatedWaitMinutes: ticket.estimatedWaitMinutes ?? 0,
+          estimatedWaitMinutes: ticket.estimated_wait_minutes ?? 0,
           status: ticket.status,
           queueLength,
         }),
@@ -661,9 +643,14 @@ module.exports = async function handler(req, res) {
     match = pathname.match(/^\/api\/v1\/queue\/postpone\/([^/]+)$/);
     if (method === 'POST' && match) {
       const sessionToken = match[1];
-      const ticket = tickets.get(sessionToken);
 
-      if (!ticket) {
+      const { data: ticket, error: ticketErr } = await supabase
+        .from('queue_tickets')
+        .select('*')
+        .eq('session_token', sessionToken)
+        .single();
+
+      if (ticketErr || !ticket) {
         return res.status(404).json(createErrorResponse(ERROR_CODES.TICKET_NOT_FOUND, 'Ticket not found'));
       }
 
@@ -678,8 +665,8 @@ module.exports = async function handler(req, res) {
       }
 
       const { positionsBack } = parsed.data;
-      const waiting = getWaitingTickets(ticket.clinicId);
-      const currentIdx = waiting.findIndex((t) => t.sessionToken === sessionToken);
+      const waiting = await getWaitingTickets(ticket.clinic_id);
+      const currentIdx = waiting.findIndex((t) => t.session_token === sessionToken);
 
       if (currentIdx === -1) {
         return res.status(404).json(createErrorResponse(ERROR_CODES.TICKET_NOT_FOUND, 'Ticket not in waiting list'));
@@ -691,15 +678,30 @@ module.exports = async function handler(req, res) {
       waiting.splice(currentIdx, 1);
       waiting.splice(newIdx, 0, ticket);
 
-      // Recalculate all positions
-      recalcPositions(ticket.clinicId);
+      // Update positions in DB
+      for (let idx = 0; idx < waiting.length; idx++) {
+        const t = waiting[idx];
+        const newPosition = idx + 1;
+        const newWait = Math.ceil((idx * DEFAULT_SERVICE_TIME_SECONDS) / 60);
+        await supabase
+          .from('queue_tickets')
+          .update({ position: newPosition, estimated_wait_minutes: newWait })
+          .eq('id', t.id);
+      }
+
+      // Re-fetch the ticket to get updated position
+      const { data: updated } = await supabase
+        .from('queue_tickets')
+        .select('*')
+        .eq('session_token', sessionToken)
+        .single();
 
       return res.status(200).json(
         createSuccessResponse({
-          ticketNumber: ticket.ticketNumber,
-          position: ticket.position,
-          estimatedWaitMinutes: ticket.estimatedWaitMinutes ?? 0,
-          status: ticket.status,
+          ticketNumber: updated.ticket_number,
+          position: updated.position,
+          estimatedWaitMinutes: updated.estimated_wait_minutes ?? 0,
+          status: updated.status,
         }),
       );
     }
@@ -708,19 +710,26 @@ module.exports = async function handler(req, res) {
     match = pathname.match(/^\/api\/v1\/queue\/leave\/([^/]+)$/);
     if (method === 'DELETE' && match) {
       const sessionToken = match[1];
-      const ticket = tickets.get(sessionToken);
 
-      if (!ticket) {
+      const { data: ticket, error: ticketErr } = await supabase
+        .from('queue_tickets')
+        .select('*')
+        .eq('session_token', sessionToken)
+        .single();
+
+      if (ticketErr || !ticket) {
         return res.status(404).json(createErrorResponse(ERROR_CODES.TICKET_NOT_FOUND, 'Ticket not found'));
       }
 
-      ticket.status = 'cancelled';
-      ticket.completedAt = new Date().toISOString();
-      ticket.updatedAt = new Date().toISOString();
+      const now = new Date().toISOString();
+      await supabase
+        .from('queue_tickets')
+        .update({ status: 'cancelled', completed_at: now })
+        .eq('session_token', sessionToken);
 
-      recalcPositions(ticket.clinicId);
+      await recalcPositions(ticket.clinic_id);
 
-      return res.status(200).json(createSuccessResponse({ message: 'Left queue', ticketNumber: ticket.ticketNumber }));
+      return res.status(200).json(createSuccessResponse({ message: 'Left queue', ticketNumber: ticket.ticket_number }));
     }
 
     // =====================================================================
@@ -734,35 +743,50 @@ module.exports = async function handler(req, res) {
         return res.status(401).json(createErrorResponse(ERROR_CODES.UNAUTHORIZED, 'Unauthorized'));
       }
 
-      const room = assignStaffToRoom(ctx.staffId);
+      const clinicId = await getStaffClinicId(ctx.staffId);
+      if (!clinicId) {
+        return res.status(401).json(createErrorResponse(ERROR_CODES.UNAUTHORIZED, 'Staff clinic not found'));
+      }
+
+      const room = await assignStaffToRoom(ctx.staffId);
       if (!room) {
         return res.status(404).json(createErrorResponse(ERROR_CODES.NO_ACTIVE_ROOM, 'No available room'));
       }
 
-      if (room.currentTicketId) {
+      if (room.current_ticket_id) {
         return res.status(409).json(createErrorResponse(ERROR_CODES.ROOM_NOT_AVAILABLE, 'Room already has a patient'));
       }
 
-      const waiting = getWaitingTickets(ctx.clinicId);
+      const waiting = await getWaitingTickets(clinicId);
       if (waiting.length === 0) {
         return res.status(200).json(createSuccessResponse({ message: 'No patients waiting', roomName: room.name }));
       }
 
       const nextTicket = waiting[0];
-      nextTicket.status = 'called';
-      nextTicket.assignedRoomId = room.id;
-      nextTicket.calledAt = new Date().toISOString();
-      nextTicket.updatedAt = new Date().toISOString();
+      const now = new Date().toISOString();
 
-      room.currentTicketId = nextTicket.id;
-      room.status = 'occupied';
-      room.updatedAt = new Date().toISOString();
+      await supabase
+        .from('queue_tickets')
+        .update({
+          status: 'called',
+          assigned_room_id: room.id,
+          called_at: now,
+        })
+        .eq('id', nextTicket.id);
 
-      recalcPositions(ctx.clinicId);
+      await supabase
+        .from('rooms')
+        .update({
+          current_ticket_id: nextTicket.id,
+          status: 'occupied',
+        })
+        .eq('id', room.id);
+
+      await recalcPositions(clinicId);
 
       return res.status(200).json(
         createSuccessResponse({
-          ticketNumber: nextTicket.ticketNumber,
+          ticketNumber: nextTicket.ticket_number,
           roomName: room.name,
           roomId: room.id,
           status: 'called',
@@ -777,23 +801,26 @@ module.exports = async function handler(req, res) {
         return res.status(401).json(createErrorResponse(ERROR_CODES.UNAUTHORIZED, 'Unauthorized'));
       }
 
-      const room = findRoomForStaff(ctx.staffId);
-      if (!room || !room.currentTicketId) {
+      const clinicId = await getStaffClinicId(ctx.staffId);
+      const room = await findRoomForStaff(ctx.staffId);
+      if (!room || !room.current_ticket_id) {
         return res.status(404).json(createErrorResponse(ERROR_CODES.NO_ACTIVE_ROOM, 'No active patient in room'));
       }
 
-      const ticket = Array.from(tickets.values()).find((t) => t.id === room.currentTicketId);
-      if (ticket) {
-        ticket.status = 'completed';
-        ticket.completedAt = new Date().toISOString();
-        ticket.updatedAt = new Date().toISOString();
+      const now = new Date().toISOString();
+      await supabase
+        .from('queue_tickets')
+        .update({ status: 'completed', completed_at: now })
+        .eq('id', room.current_ticket_id);
+
+      await supabase
+        .from('rooms')
+        .update({ current_ticket_id: null, status: 'open' })
+        .eq('id', room.id);
+
+      if (clinicId) {
+        await recalcPositions(clinicId);
       }
-
-      room.currentTicketId = null;
-      room.status = 'open';
-      room.updatedAt = new Date().toISOString();
-
-      recalcPositions(ctx.clinicId);
 
       return res.status(200).json(createSuccessResponse({ message: 'Patient completed', roomName: room.name }));
     }
@@ -805,23 +832,26 @@ module.exports = async function handler(req, res) {
         return res.status(401).json(createErrorResponse(ERROR_CODES.UNAUTHORIZED, 'Unauthorized'));
       }
 
-      const room = findRoomForStaff(ctx.staffId);
-      if (!room || !room.currentTicketId) {
+      const clinicId = await getStaffClinicId(ctx.staffId);
+      const room = await findRoomForStaff(ctx.staffId);
+      if (!room || !room.current_ticket_id) {
         return res.status(404).json(createErrorResponse(ERROR_CODES.NO_ACTIVE_ROOM, 'No active patient in room'));
       }
 
-      const ticket = Array.from(tickets.values()).find((t) => t.id === room.currentTicketId);
-      if (ticket) {
-        ticket.status = 'no_show';
-        ticket.completedAt = new Date().toISOString();
-        ticket.updatedAt = new Date().toISOString();
+      const now = new Date().toISOString();
+      await supabase
+        .from('queue_tickets')
+        .update({ status: 'no_show', completed_at: now })
+        .eq('id', room.current_ticket_id);
+
+      await supabase
+        .from('rooms')
+        .update({ current_ticket_id: null, status: 'open' })
+        .eq('id', room.id);
+
+      if (clinicId) {
+        await recalcPositions(clinicId);
       }
-
-      room.currentTicketId = null;
-      room.status = 'open';
-      room.updatedAt = new Date().toISOString();
-
-      recalcPositions(ctx.clinicId);
 
       return res.status(200).json(createSuccessResponse({ message: 'Patient marked no-show', roomName: room.name }));
     }
@@ -833,15 +863,17 @@ module.exports = async function handler(req, res) {
         return res.status(401).json(createErrorResponse(ERROR_CODES.UNAUTHORIZED, 'Unauthorized'));
       }
 
-      const room = findRoomForStaff(ctx.staffId);
+      const room = await findRoomForStaff(ctx.staffId);
       if (!room) {
         return res.status(404).json(createErrorResponse(ERROR_CODES.NO_ACTIVE_ROOM, 'No room assigned'));
       }
 
-      room.status = 'paused';
-      room.updatedAt = new Date().toISOString();
+      await supabase
+        .from('rooms')
+        .update({ status: 'paused' })
+        .eq('id', room.id);
 
-      return res.status(200).json(createSuccessResponse({ message: 'Room paused', roomName: room.name, status: room.status }));
+      return res.status(200).json(createSuccessResponse({ message: 'Room paused', roomName: room.name, status: 'paused' }));
     }
 
     // POST /api/v1/staff/resume
@@ -851,15 +883,18 @@ module.exports = async function handler(req, res) {
         return res.status(401).json(createErrorResponse(ERROR_CODES.UNAUTHORIZED, 'Unauthorized'));
       }
 
-      const room = findRoomForStaff(ctx.staffId);
+      const room = await findRoomForStaff(ctx.staffId);
       if (!room) {
         return res.status(404).json(createErrorResponse(ERROR_CODES.NO_ACTIVE_ROOM, 'No room assigned'));
       }
 
-      room.status = room.currentTicketId ? 'occupied' : 'open';
-      room.updatedAt = new Date().toISOString();
+      const newStatus = room.current_ticket_id ? 'occupied' : 'open';
+      await supabase
+        .from('rooms')
+        .update({ status: newStatus })
+        .eq('id', room.id);
 
-      return res.status(200).json(createSuccessResponse({ message: 'Room resumed', roomName: room.name, status: room.status }));
+      return res.status(200).json(createSuccessResponse({ message: 'Room resumed', roomName: room.name, status: newStatus }));
     }
 
     // GET /api/v1/staff/room/status
@@ -869,24 +904,31 @@ module.exports = async function handler(req, res) {
         return res.status(401).json(createErrorResponse(ERROR_CODES.UNAUTHORIZED, 'Unauthorized'));
       }
 
-      const room = findRoomForStaff(ctx.staffId);
+      const clinicId = await getStaffClinicId(ctx.staffId);
+      const room = await findRoomForStaff(ctx.staffId);
       if (!room) {
         return res.status(200).json(createSuccessResponse({ assigned: false, room: null, currentTicket: null }));
       }
 
       let currentTicket = null;
-      if (room.currentTicketId) {
-        const ticket = Array.from(tickets.values()).find((t) => t.id === room.currentTicketId);
+      if (room.current_ticket_id) {
+        const { data: ticket } = await supabase
+          .from('queue_tickets')
+          .select('ticket_number, status, called_at')
+          .eq('id', room.current_ticket_id)
+          .single();
+
         if (ticket) {
           currentTicket = {
-            ticketNumber: ticket.ticketNumber,
+            ticketNumber: ticket.ticket_number,
             status: ticket.status,
-            calledAt: ticket.calledAt,
+            calledAt: ticket.called_at,
           };
         }
       }
 
-      const waitingCount = getWaitingTickets(ctx.clinicId).length;
+      const waiting = clinicId ? await getWaitingTickets(clinicId) : [];
+      const waitingCount = waiting.length;
 
       return res.status(200).json(
         createSuccessResponse({
@@ -908,46 +950,90 @@ module.exports = async function handler(req, res) {
 
     // GET /api/v1/admin/dashboard
     if (method === 'GET' && pathname === '/api/v1/admin/dashboard') {
-      const waiting = getWaitingTickets(CLINIC_ID);
-      const allTickets = Array.from(tickets.values()).filter((t) => t.clinicId === CLINIC_ID);
-      const roomList = Array.from(rooms.values()).filter((r) => r.clinicId === CLINIC_ID);
+      // Get clinic ID from query or use first clinic
+      const queryParams = getQueryParams(url);
+      let clinicId = queryParams.clinicId;
 
-      const completed = allTickets.filter((t) => t.status === 'completed').length;
-      const noShows = allTickets.filter((t) => t.status === 'no_show').length;
-      const activeRooms = roomList.filter((r) => r.isActive && r.status !== 'closed').length;
-      const occupiedRooms = roomList.filter((r) => r.status === 'occupied').length;
+      if (!clinicId) {
+        const { data: firstClinic } = await supabase
+          .from('clinics')
+          .select('id')
+          .eq('is_active', true)
+          .limit(1)
+          .single();
+        clinicId = firstClinic ? firstClinic.id : null;
+      }
+
+      if (!clinicId) {
+        return res.status(404).json(createErrorResponse(ERROR_CODES.CLINIC_NOT_FOUND, 'No clinic found'));
+      }
+
+      const waiting = await getWaitingTickets(clinicId);
+
+      const { data: allTickets } = await supabase
+        .from('queue_tickets')
+        .select('status')
+        .eq('clinic_id', clinicId);
+
+      const { data: roomList } = await supabase
+        .from('rooms')
+        .select('*')
+        .eq('clinic_id', clinicId);
+
+      const tickets = allTickets || [];
+      const roomArr = roomList || [];
+
+      const completed = tickets.filter((t) => t.status === 'completed').length;
+      const noShows = tickets.filter((t) => t.status === 'no_show').length;
+      const activeRooms = roomArr.filter((r) => r.is_active && r.status !== 'closed').length;
+      const occupiedRooms = roomArr.filter((r) => r.status === 'occupied').length;
 
       return res.status(200).json(
         createSuccessResponse({
-          clinicId: CLINIC_ID,
+          clinicId,
           queueLength: waiting.length,
           completedToday: completed,
           noShowsToday: noShows,
-          totalRooms: roomList.length,
+          totalRooms: roomArr.length,
           activeRooms,
           occupiedRooms,
-          averageWaitMinutes: waiting.length > 0 ? Math.round(waiting.reduce((sum, t) => sum + (t.estimatedWaitMinutes ?? 0), 0) / waiting.length) : 0,
+          averageWaitMinutes: waiting.length > 0 ? Math.round(waiting.reduce((sum, t) => sum + (t.estimated_wait_minutes ?? 0), 0) / waiting.length) : 0,
         }),
       );
     }
 
     // GET /api/v1/admin/queue
     if (method === 'GET' && pathname === '/api/v1/admin/queue') {
-      const allTickets = Array.from(tickets.values())
-        .filter((t) => t.clinicId === CLINIC_ID)
-        .sort((a, b) => a.position - b.position);
+      const queryParams = getQueryParams(url);
+      let clinicId = queryParams.clinicId;
+
+      if (!clinicId) {
+        const { data: firstClinic } = await supabase
+          .from('clinics')
+          .select('id')
+          .eq('is_active', true)
+          .limit(1)
+          .single();
+        clinicId = firstClinic ? firstClinic.id : null;
+      }
+
+      const { data: allTickets } = await supabase
+        .from('queue_tickets')
+        .select('*')
+        .eq('clinic_id', clinicId)
+        .order('position', { ascending: true });
 
       return res.status(200).json(
         createSuccessResponse(
-          allTickets.map((t) => ({
+          (allTickets || []).map((t) => ({
             id: t.id,
-            ticketNumber: t.ticketNumber,
+            ticketNumber: t.ticket_number,
             status: t.status,
             position: t.position,
-            estimatedWaitMinutes: t.estimatedWaitMinutes,
-            assignedRoomId: t.assignedRoomId,
-            joinedAt: t.joinedAt,
-            calledAt: t.calledAt,
+            estimatedWaitMinutes: t.estimated_wait_minutes,
+            assignedRoomId: t.assigned_room_id,
+            joinedAt: t.joined_at,
+            calledAt: t.called_at,
             language: t.language,
           })),
         ),
@@ -963,44 +1049,75 @@ module.exports = async function handler(req, res) {
       }
 
       const { clinicId, name, displayOrder } = parsed.data;
-      const id = crypto.randomUUID();
-      const roomNow = new Date().toISOString();
 
-      const room = {
-        id,
-        organizationId: ORG_ID,
-        clinicId,
-        name,
-        displayOrder,
-        status: 'open',
-        currentStaffId: null,
-        currentTicketId: null,
-        isActive: true,
-        createdAt: roomNow,
-        updatedAt: roomNow,
-      };
+      // Get organization_id from clinic
+      const { data: clinic } = await supabase
+        .from('clinics')
+        .select('organization_id')
+        .eq('id', clinicId)
+        .single();
 
-      rooms.set(id, room);
-      addAuditEntry('room.created', 'room', id);
+      const { data: room, error: insertErr } = await supabase
+        .from('rooms')
+        .insert({
+          organization_id: clinic ? clinic.organization_id : null,
+          clinic_id: clinicId,
+          name,
+          display_order: displayOrder,
+          status: 'open',
+          current_staff_id: null,
+          current_ticket_id: null,
+          is_active: true,
+        })
+        .select()
+        .single();
+
+      if (insertErr) {
+        console.error('Room insert error:', insertErr.message);
+        return res.status(500).json(createErrorResponse(ERROR_CODES.INTERNAL_ERROR, 'Failed to create room'));
+      }
+
+      await addAuditEntry('room.created', 'room', room.id, null, room.organization_id, clinicId);
 
       return res.status(201).json(createSuccessResponse(room));
     }
 
     // GET /api/v1/admin/rooms
     if (method === 'GET' && pathname === '/api/v1/admin/rooms') {
-      const roomList = Array.from(rooms.values())
-        .filter((r) => r.clinicId === CLINIC_ID)
-        .sort((a, b) => a.displayOrder - b.displayOrder);
+      const queryParams = getQueryParams(url);
+      let clinicId = queryParams.clinicId;
 
-      return res.status(200).json(createSuccessResponse(roomList));
+      if (!clinicId) {
+        const { data: firstClinic } = await supabase
+          .from('clinics')
+          .select('id')
+          .eq('is_active', true)
+          .limit(1)
+          .single();
+        clinicId = firstClinic ? firstClinic.id : null;
+      }
+
+      const { data: roomList } = await supabase
+        .from('rooms')
+        .select('*')
+        .eq('clinic_id', clinicId)
+        .order('display_order', { ascending: true });
+
+      return res.status(200).json(createSuccessResponse(roomList || []));
     }
 
     // PUT /api/v1/admin/rooms/:roomId
     match = pathname.match(/^\/api\/v1\/admin\/rooms\/([^/]+)$/);
     if (method === 'PUT' && match) {
       const roomId = match[1];
-      const room = rooms.get(roomId);
-      if (!room) {
+
+      const { data: room, error: roomErr } = await supabase
+        .from('rooms')
+        .select('*')
+        .eq('id', roomId)
+        .single();
+
+      if (roomErr || !room) {
         return res.status(404).json(createErrorResponse(ERROR_CODES.NOT_FOUND, 'Room not found'));
       }
 
@@ -1011,35 +1128,69 @@ module.exports = async function handler(req, res) {
       }
 
       const updates = parsed.data;
-      if (updates.name !== undefined) room.name = updates.name;
-      if (updates.displayOrder !== undefined) room.displayOrder = updates.displayOrder;
-      if (updates.isActive !== undefined) room.isActive = updates.isActive;
-      room.updatedAt = new Date().toISOString();
+      const dbUpdates = {};
+      if (updates.name !== undefined) dbUpdates.name = updates.name;
+      if (updates.displayOrder !== undefined) dbUpdates.display_order = updates.displayOrder;
+      if (updates.isActive !== undefined) dbUpdates.is_active = updates.isActive;
 
-      addAuditEntry('room.updated', 'room', roomId);
+      const { data: updated, error: updateErr } = await supabase
+        .from('rooms')
+        .update(dbUpdates)
+        .eq('id', roomId)
+        .select()
+        .single();
 
-      return res.status(200).json(createSuccessResponse(room));
+      if (updateErr) {
+        return res.status(500).json(createErrorResponse(ERROR_CODES.INTERNAL_ERROR, 'Failed to update room'));
+      }
+
+      await addAuditEntry('room.updated', 'room', roomId, null, room.organization_id, room.clinic_id);
+
+      return res.status(200).json(createSuccessResponse(updated));
     }
 
     // DELETE /api/v1/admin/rooms/:roomId
     match = pathname.match(/^\/api\/v1\/admin\/rooms\/([^/]+)$/);
     if (method === 'DELETE' && match) {
       const roomId = match[1];
-      const room = rooms.get(roomId);
-      if (!room) {
+
+      const { data: room, error: roomErr } = await supabase
+        .from('rooms')
+        .select('*')
+        .eq('id', roomId)
+        .single();
+
+      if (roomErr || !room) {
         return res.status(404).json(createErrorResponse(ERROR_CODES.NOT_FOUND, 'Room not found'));
       }
 
-      rooms.delete(roomId);
-      addAuditEntry('room.deleted', 'room', roomId);
+      await supabase.from('rooms').delete().eq('id', roomId);
+      await addAuditEntry('room.deleted', 'room', roomId, null, room.organization_id, room.clinic_id);
 
       return res.status(200).json(createSuccessResponse({ message: 'Room deleted' }));
     }
 
     // GET /api/v1/admin/staff
     if (method === 'GET' && pathname === '/api/v1/admin/staff') {
-      const staffList = Array.from(staffStore.values()).filter((s) => s.clinicId === CLINIC_ID);
-      return res.status(200).json(createSuccessResponse(staffList));
+      const queryParams = getQueryParams(url);
+      let clinicId = queryParams.clinicId;
+
+      if (!clinicId) {
+        const { data: firstClinic } = await supabase
+          .from('clinics')
+          .select('id')
+          .eq('is_active', true)
+          .limit(1)
+          .single();
+        clinicId = firstClinic ? firstClinic.id : null;
+      }
+
+      const { data: staffList } = await supabase
+        .from('users')
+        .select('id, organization_id, clinic_id, email, display_name, role, preferred_language, is_active, last_login_at')
+        .eq('clinic_id', clinicId);
+
+      return res.status(200).json(createSuccessResponse(staffList || []));
     }
 
     // POST /api/v1/admin/staff
@@ -1050,24 +1201,30 @@ module.exports = async function handler(req, res) {
         return res.status(400).json(createErrorResponse(ERROR_CODES.INVALID_INPUT, 'Invalid input', parsed.error.flatten()));
       }
 
-      const { organizationId, clinicId, email, displayName, role } = parsed.data;
-      const id = crypto.randomUUID();
-      const createNow = new Date().toISOString();
+      const { organizationId, clinicId, email, password, displayName, role, preferredLanguage } = parsed.data;
+      const passwordHash = await bcrypt.hash(password, 10);
 
-      const staff = {
-        id,
-        organizationId,
-        clinicId: clinicId ?? null,
-        email,
-        displayName,
-        role,
-        isActive: true,
-        createdAt: createNow,
-        updatedAt: createNow,
-      };
+      const { data: staff, error: insertErr } = await supabase
+        .from('users')
+        .insert({
+          organization_id: organizationId,
+          clinic_id: clinicId ?? null,
+          email,
+          password_hash: passwordHash,
+          display_name: displayName,
+          role,
+          preferred_language: preferredLanguage,
+          is_active: true,
+        })
+        .select('id, organization_id, clinic_id, email, display_name, role, preferred_language, is_active')
+        .single();
 
-      staffStore.set(id, staff);
-      addAuditEntry('staff.created', 'user', id);
+      if (insertErr) {
+        console.error('Staff insert error:', insertErr.message);
+        return res.status(500).json(createErrorResponse(ERROR_CODES.INTERNAL_ERROR, 'Failed to create staff member'));
+      }
+
+      await addAuditEntry('staff.created', 'user', staff.id, null, organizationId, clinicId);
 
       return res.status(201).json(createSuccessResponse(staff));
     }
@@ -1076,8 +1233,14 @@ module.exports = async function handler(req, res) {
     match = pathname.match(/^\/api\/v1\/admin\/staff\/([^/]+)$/);
     if (method === 'PUT' && match) {
       const userId = match[1];
-      const staff = staffStore.get(userId);
-      if (!staff) {
+
+      const { data: staff, error: staffErr } = await supabase
+        .from('users')
+        .select('*')
+        .eq('id', userId)
+        .single();
+
+      if (staffErr || !staff) {
         return res.status(404).json(createErrorResponse(ERROR_CODES.NOT_FOUND, 'Staff member not found'));
       }
 
@@ -1088,29 +1251,50 @@ module.exports = async function handler(req, res) {
       }
 
       const updates = parsed.data;
-      if (updates.email !== undefined) staff.email = updates.email;
-      if (updates.displayName !== undefined) staff.displayName = updates.displayName;
-      if (updates.role !== undefined) staff.role = updates.role;
-      if (updates.isActive !== undefined) staff.isActive = updates.isActive;
-      staff.updatedAt = new Date().toISOString();
+      const dbUpdates = {};
+      if (updates.email !== undefined) dbUpdates.email = updates.email;
+      if (updates.displayName !== undefined) dbUpdates.display_name = updates.displayName;
+      if (updates.role !== undefined) dbUpdates.role = updates.role;
+      if (updates.preferredLanguage !== undefined) dbUpdates.preferred_language = updates.preferredLanguage;
+      if (updates.isActive !== undefined) dbUpdates.is_active = updates.isActive;
 
-      addAuditEntry('staff.updated', 'user', userId);
+      const { data: updated, error: updateErr } = await supabase
+        .from('users')
+        .update(dbUpdates)
+        .eq('id', userId)
+        .select('id, organization_id, clinic_id, email, display_name, role, preferred_language, is_active')
+        .single();
 
-      return res.status(200).json(createSuccessResponse(staff));
+      if (updateErr) {
+        return res.status(500).json(createErrorResponse(ERROR_CODES.INTERNAL_ERROR, 'Failed to update staff member'));
+      }
+
+      await addAuditEntry('staff.updated', 'user', userId, null, staff.organization_id, staff.clinic_id);
+
+      return res.status(200).json(createSuccessResponse(updated));
     }
 
     // DELETE /api/v1/admin/staff/:userId
     match = pathname.match(/^\/api\/v1\/admin\/staff\/([^/]+)$/);
     if (method === 'DELETE' && match) {
       const userId = match[1];
-      const staff = staffStore.get(userId);
-      if (!staff) {
+
+      const { data: staff, error: staffErr } = await supabase
+        .from('users')
+        .select('*')
+        .eq('id', userId)
+        .single();
+
+      if (staffErr || !staff) {
         return res.status(404).json(createErrorResponse(ERROR_CODES.NOT_FOUND, 'Staff member not found'));
       }
 
-      staff.isActive = false;
-      staff.updatedAt = new Date().toISOString();
-      addAuditEntry('staff.deactivated', 'user', userId);
+      await supabase
+        .from('users')
+        .update({ is_active: false })
+        .eq('id', userId);
+
+      await addAuditEntry('staff.deactivated', 'user', userId, null, staff.organization_id, staff.clinic_id);
 
       return res.status(200).json(createSuccessResponse({ message: 'Staff member deactivated' }));
     }
@@ -1126,17 +1310,39 @@ module.exports = async function handler(req, res) {
       const page = query.success ? query.data.page : 1;
       const pageSize = query.success ? query.data.pageSize : 20;
 
-      const filtered = auditLog
-        .filter((e) => e.clinicId === CLINIC_ID)
-        .sort((a, b) => b.timestamp.localeCompare(a.timestamp));
+      let clinicId = queryParams.clinicId;
+      if (!clinicId) {
+        const { data: firstClinic } = await supabase
+          .from('clinics')
+          .select('id')
+          .eq('is_active', true)
+          .limit(1)
+          .single();
+        clinicId = firstClinic ? firstClinic.id : null;
+      }
 
-      const total = filtered.length;
-      const totalPages = Math.ceil(total / pageSize);
-      const paginated = filtered.slice((page - 1) * pageSize, page * pageSize);
+      const from = (page - 1) * pageSize;
+      const to = from + pageSize - 1;
+
+      // Get total count
+      const { count: total } = await supabase
+        .from('audit_log')
+        .select('id', { count: 'exact', head: true })
+        .eq('clinic_id', clinicId);
+
+      const { data: paginated } = await supabase
+        .from('audit_log')
+        .select('*')
+        .eq('clinic_id', clinicId)
+        .order('timestamp', { ascending: false })
+        .range(from, to);
+
+      const totalCount = total || 0;
+      const totalPages = Math.ceil(totalCount / pageSize);
 
       return res.status(200).json(
-        createSuccessResponse(paginated, {
-          pagination: { page, pageSize, total, totalPages },
+        createSuccessResponse(paginated || [], {
+          pagination: { page, pageSize, total: totalCount, totalPages },
         }),
       );
     }
@@ -1149,38 +1355,54 @@ module.exports = async function handler(req, res) {
     match = pathname.match(/^\/api\/v1\/display\/([^/]+)$/);
     if (method === 'GET' && match) {
       const slug = match[1];
-      const clinic = clinics.get(slug);
 
-      if (!clinic) {
+      const { data: clinic, error: clinicErr } = await supabase
+        .from('clinics')
+        .select('*')
+        .eq('slug', slug)
+        .eq('is_active', true)
+        .single();
+
+      if (clinicErr || !clinic) {
         return res.status(404).json(createErrorResponse(ERROR_CODES.CLINIC_NOT_FOUND, 'Clinic not found'));
       }
 
-      const waiting = getWaitingTickets(clinic.id);
-      const roomList = Array.from(rooms.values())
-        .filter((r) => r.clinicId === clinic.id && r.isActive)
-        .sort((a, b) => a.displayOrder - b.displayOrder);
+      const waiting = await getWaitingTickets(clinic.id);
 
-      // Build display data — only expose non-sensitive information
-      const calledTickets = Array.from(tickets.values())
-        .filter((t) => t.clinicId === clinic.id && (t.status === 'called' || t.status === 'in_progress'))
-        .map((t) => ({
-          ticketNumber: t.ticketNumber,
-          roomName: roomList.find((r) => r.id === t.assignedRoomId)?.name ?? null,
-          status: t.status,
-        }));
+      const { data: roomList } = await supabase
+        .from('rooms')
+        .select('*')
+        .eq('clinic_id', clinic.id)
+        .eq('is_active', true)
+        .order('display_order', { ascending: true });
+
+      const roomArr = roomList || [];
+
+      // Get called/in_progress tickets
+      const { data: calledTicketsRaw } = await supabase
+        .from('queue_tickets')
+        .select('ticket_number, assigned_room_id, status')
+        .eq('clinic_id', clinic.id)
+        .in('status', ['called', 'in_progress']);
+
+      const calledTickets = (calledTicketsRaw || []).map((t) => ({
+        ticketNumber: t.ticket_number,
+        roomName: roomArr.find((r) => r.id === t.assigned_room_id)?.name ?? null,
+        status: t.status,
+      }));
 
       return res.status(200).json(
         createSuccessResponse({
           clinicName: clinic.name,
           clinicSlug: clinic.slug,
           queueLength: waiting.length,
-          rooms: roomList.map((r) => ({
+          rooms: roomArr.map((r) => ({
             name: r.name,
             status: r.status,
-            displayOrder: r.displayOrder,
+            displayOrder: r.display_order,
           })),
           calledTickets,
-          nextTicketNumbers: waiting.slice(0, 5).map((t) => t.ticketNumber),
+          nextTicketNumbers: waiting.slice(0, 5).map((t) => t.ticket_number),
         }),
       );
     }
@@ -1189,9 +1411,14 @@ module.exports = async function handler(req, res) {
     match = pathname.match(/^\/api\/v1\/clinic\/([^/]+)\/info$/);
     if (method === 'GET' && match) {
       const slug = match[1];
-      const clinic = clinics.get(slug);
 
-      if (!clinic) {
+      const { data: clinic, error: clinicErr } = await supabase
+        .from('clinics')
+        .select('*')
+        .eq('slug', slug)
+        .single();
+
+      if (clinicErr || !clinic) {
         return res.status(404).json(createErrorResponse(ERROR_CODES.CLINIC_NOT_FOUND, 'Clinic not found'));
       }
 
@@ -1202,8 +1429,8 @@ module.exports = async function handler(req, res) {
           slug: clinic.slug,
           address: clinic.address,
           timezone: clinic.timezone,
-          defaultLanguage: clinic.defaultLanguage,
-          isActive: clinic.isActive,
+          defaultLanguage: clinic.default_language,
+          isActive: clinic.is_active,
         }),
       );
     }
@@ -1214,8 +1441,6 @@ module.exports = async function handler(req, res) {
 
     // POST /api/v1/system/auth/login — SuperAdmin login
     if (method === 'POST' && pathname === '/api/v1/system/auth/login') {
-      await superAdminsReady;
-
       const body = await parseBody(req);
       const parsed = superAdminLoginSchema.safeParse(body);
       if (!parsed.success) {
@@ -1223,13 +1448,19 @@ module.exports = async function handler(req, res) {
       }
 
       const { email, password, totpCode } = parsed.data;
-      const admin = superAdmins.find((a) => a.email === email && a.isActive);
 
-      if (!admin) {
+      const { data: admin, error: adminErr } = await supabase
+        .from('superadmins')
+        .select('*')
+        .eq('email', email)
+        .eq('is_active', true)
+        .single();
+
+      if (adminErr || !admin) {
         return res.status(401).json(createErrorResponse(ERROR_CODES.INVALID_CREDENTIALS, 'Invalid credentials'));
       }
 
-      const validPassword = verifyPassword(admin.passwordHash, password);
+      const validPassword = await bcrypt.compare(password, admin.password_hash);
       if (!validPassword) {
         return res.status(401).json(createErrorResponse(ERROR_CODES.INVALID_CREDENTIALS, 'Invalid credentials'));
       }
@@ -1262,8 +1493,11 @@ module.exports = async function handler(req, res) {
 
     // GET /api/v1/system/organizations
     if (method === 'GET' && pathname === '/api/v1/system/organizations') {
-      const orgList = Array.from(organizations.values());
-      return res.status(200).json(createSuccessResponse(orgList));
+      const { data: orgList } = await supabase
+        .from('organizations')
+        .select('*');
+
+      return res.status(200).json(createSuccessResponse(orgList || []));
     }
 
     // GET /api/v1/system/health
@@ -1285,6 +1519,7 @@ module.exports = async function handler(req, res) {
     return res.status(404).json(createErrorResponse(ERROR_CODES.NOT_FOUND, 'Not found'));
 
   } catch (err) {
+    console.error('Handler error:', err);
     return res.status(500).json(createErrorResponse(ERROR_CODES.INTERNAL_ERROR, err.message));
   }
 };
