@@ -695,11 +695,11 @@ function StaffSection() {
   const [showAddForm, setShowAddForm] = useState(false);
   const [newName, setNewName] = useState('');
   const [newEmail, setNewEmail] = useState('');
-  const [newRole, setNewRole] = useState<'clinic_admin' | 'staff'>('staff');
+  const [newRole, setNewRole] = useState<'org_admin' | 'clinic_admin' | 'staff'>('staff');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
   const [editEmail, setEditEmail] = useState('');
-  const [editRole, setEditRole] = useState<'clinic_admin' | 'staff'>('staff');
+  const [editRole, setEditRole] = useState<'org_admin' | 'clinic_admin' | 'staff'>('staff');
 
   function handleAdd() {
     if (!newName.trim() || !newEmail.trim()) return;
@@ -710,7 +710,7 @@ function StaffSection() {
     setShowAddForm(false);
   }
 
-  function startEdit(member: { id: string; displayName: string; email: string; role: 'clinic_admin' | 'staff' }) {
+  function startEdit(member: { id: string; displayName: string; email: string; role: 'org_admin' | 'clinic_admin' | 'staff' }) {
     setEditingId(member.id);
     setEditName(member.displayName);
     setEditEmail(member.email);
@@ -762,11 +762,12 @@ function StaffSection() {
           />
           <select
             value={newRole}
-            onChange={e => setNewRole(e.target.value as 'clinic_admin' | 'staff')}
+            onChange={e => setNewRole(e.target.value as 'org_admin' | 'clinic_admin' | 'staff')}
             className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white min-h-[44px]"
           >
             <option value="staff">Personal</option>
             <option value="clinic_admin">Klinikadmin</option>
+            <option value="org_admin">Organisationsadmin</option>
           </select>
           <div className="flex gap-2">
             <button onClick={handleAdd} className="flex-1 sm:flex-none px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 transition-colors min-h-[44px]">
@@ -801,11 +802,12 @@ function StaffSection() {
                 />
                 <select
                   value={editRole}
-                  onChange={e => setEditRole(e.target.value as 'clinic_admin' | 'staff')}
+                  onChange={e => setEditRole(e.target.value as 'org_admin' | 'clinic_admin' | 'staff')}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[44px]"
                 >
                   <option value="staff">Personal</option>
                   <option value="clinic_admin">Klinikadmin</option>
+                  <option value="org_admin">Organisationsadmin</option>
                 </select>
                 <div className="flex gap-2">
                   <button onClick={() => saveEdit(member.id)} className="flex-1 px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 min-h-[44px]">Spara</button>
@@ -819,8 +821,8 @@ function StaffSection() {
                     <p className="font-medium text-gray-900 truncate">{member.displayName}</p>
                     <p className="text-sm text-gray-500 truncate">{member.email}</p>
                   </div>
-                  <Badge className={member.role === 'clinic_admin' ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'}>
-                    {member.role === 'clinic_admin' ? 'Klinikadmin' : 'Personal'}
+                  <Badge className={member.role === 'org_admin' ? 'bg-indigo-100 text-indigo-700' : member.role === 'clinic_admin' ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'}>
+                    {member.role === 'org_admin' ? 'Org-admin' : member.role === 'clinic_admin' ? 'Klinikadmin' : 'Personal'}
                   </Badge>
                 </div>
                 <div className="flex items-center justify-between mt-3 pt-3 border-t border-gray-100">
@@ -893,11 +895,12 @@ function StaffSection() {
                       <td className="px-5 py-3">
                         <select
                           value={editRole}
-                          onChange={e => setEditRole(e.target.value as 'clinic_admin' | 'staff')}
+                          onChange={e => setEditRole(e.target.value as 'org_admin' | 'clinic_admin' | 'staff')}
                           className="px-2 py-1 border border-gray-300 rounded text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                         >
                           <option value="staff">Personal</option>
                           <option value="clinic_admin">Klinikadmin</option>
+                          <option value="org_admin">Organisationsadmin</option>
                         </select>
                       </td>
                       <td className="px-5 py-3">
@@ -918,8 +921,8 @@ function StaffSection() {
                       <td className="px-5 py-3 font-medium text-gray-900">{member.displayName}</td>
                       <td className="px-5 py-3 text-gray-600">{member.email}</td>
                       <td className="px-5 py-3">
-                        <Badge className={member.role === 'clinic_admin' ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'}>
-                          {member.role === 'clinic_admin' ? 'Klinikadmin' : 'Personal'}
+                        <Badge className={member.role === 'org_admin' ? 'bg-indigo-100 text-indigo-700' : member.role === 'clinic_admin' ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'}>
+                          {member.role === 'org_admin' ? 'Org-admin' : member.role === 'clinic_admin' ? 'Klinikadmin' : 'Personal'}
                         </Badge>
                       </td>
                       <td className="px-5 py-3">

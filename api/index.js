@@ -1311,13 +1311,25 @@ module.exports = async function handler(req, res) {
     // POST /api/v1/admin/staff
     if (method === 'POST' && pathname === '/api/v1/admin/staff') {
       const body = await parseBody(req);
-      const parsed = createUserSchema.safeParse(body);
-      if (!parsed.success) {
-        return res.status(400).json(createErrorResponse(ERROR_CODES.INVALID_INPUT, 'Invalid input', parsed.error.flatten()));
+
+      // Frontend sends minimal fields — set defaults for required DB fields
+      const email = (body.email || '').trim().toLowerCase();
+      const displayName = body.displayName || body.display_name || '';
+      const role = body.role || 'staff';
+
+      if (!email || !displayName) {
+        return res.status(400).json(createErrorResponse(ERROR_CODES.INVALID_INPUT, 'Email and name are required'));
       }
 
-      const { organizationId, clinicId, email, password, displayName, role, preferredLanguage } = parsed.data;
-      const passwordHash = await bcrypt.hash(password, 10);
+      // Default org/clinic from first active clinic
+      let organizationId = body.organizationId || ORG_ID;
+      let clinicId = body.clinicId || CLINIC_ID;
+      if (role === 'org_admin') clinicId = null; // org admins are not clinic-scoped
+
+      // Generate a temporary password (user should change it on first login)
+      const tempPassword = 'Temp' + Math.random().toString(36).slice(2, 10) + '1!';
+      const passwordHash = await bcrypt.hash(body.password || tempPassword, 10);
+      const preferredLanguage = body.preferredLanguage || 'sv';
 
       const { data: staff, error: insertErr } = await supabase
         .from('users')

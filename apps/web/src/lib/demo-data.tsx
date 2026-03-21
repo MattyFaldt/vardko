@@ -24,7 +24,7 @@ export interface DemoStaffMember {
   id: string;
   displayName: string;
   email: string;
-  role: 'clinic_admin' | 'staff';
+  role: 'org_admin' | 'clinic_admin' | 'staff';
   isActive: boolean;
   assignedRoomId: string | null;
 }
@@ -87,7 +87,7 @@ interface DemoContextValue {
   updateRoom: (id: string, updates: { name?: string; isActive?: boolean }) => void;
   removeRoom: (id: string) => void;
   // Staff management
-  addStaffMember: (member: { displayName: string; email: string; role: 'clinic_admin' | 'staff' }) => void;
+  addStaffMember: (member: { displayName: string; email: string; role: 'org_admin' | 'clinic_admin' | 'staff' }) => void;
   updateStaffMember: (id: string, updates: Partial<Pick<DemoStaffMember, 'displayName' | 'email' | 'role' | 'isActive'>>) => void;
   removeStaffMember: (id: string) => void;
   // Staff-room assignment

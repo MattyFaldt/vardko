@@ -63,7 +63,7 @@ interface ApiDataContextValue {
   updateRoom: (id: string, updates: { name?: string; isActive?: boolean }) => void;
   removeRoom: (id: string) => void;
   // Staff management
-  addStaffMember: (member: { displayName: string; email: string; role: 'clinic_admin' | 'staff' }) => void;
+  addStaffMember: (member: { displayName: string; email: string; role: 'org_admin' | 'clinic_admin' | 'staff' }) => void;
   updateStaffMember: (id: string, updates: Partial<Pick<DemoStaffMember, 'displayName' | 'email' | 'role' | 'isActive'>>) => void;
   removeStaffMember: (id: string) => void;
   // Staff-room assignment
@@ -438,7 +438,8 @@ export function ApiDataProvider({ children }: { children: ReactNode }) {
       ]);
 
       const token = getCurrentToken();
-      api.addRoomApi(token, name, '').catch(() => {});
+      const cId = '00000000-0000-0000-0000-000000000010'; // default clinic
+      api.addRoomApi(token, name, cId).catch(() => {});
       // Next poll will replace the temp entry with the real one
     },
     [],
@@ -467,7 +468,7 @@ export function ApiDataProvider({ children }: { children: ReactNode }) {
   // ---------------------------------------------------------------------------
 
   const addStaffMember = useCallback(
-    (member: { displayName: string; email: string; role: 'clinic_admin' | 'staff' }) => {
+    (member: { displayName: string; email: string; role: 'org_admin' | 'clinic_admin' | 'staff' }) => {
       const tempId = `s-tmp-${Date.now()}`;
       setStaff((prev) => [...prev, { id: tempId, ...member, isActive: true, assignedRoomId: null }]);
       const token = getCurrentToken();
