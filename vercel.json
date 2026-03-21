@@ -1,8 +1,13 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "buildCommand": "pnpm turbo build --filter=@vardko/web && cp -r apps/web/dist/* public/",
-  "outputDirectory": "public",
   "installCommand": "pnpm install",
+  "buildCommand": "pnpm turbo build --filter=@vardko/web",
+  "outputDirectory": "apps/web/dist",
+  "functions": {
+    "api/**/*.ts": {
+      "memory": 256
+    }
+  },
   "rewrites": [
     { "source": "/api/(.*)", "destination": "/api/index" },
     { "source": "/(.*)", "destination": "/index.html" }
