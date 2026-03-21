@@ -714,13 +714,23 @@ async function serviceListRooms(clinicId) {
   return { statusCode: 200, response: createSuccessResponse(mappedRooms) };
 }
 
-async function serviceAddRoom(body) {
-  const parsed = createRoomSchema.safeParse(body);
-  if (!parsed.success) {
-    return { statusCode: 400, response: createErrorResponse(ERROR_CODES.INVALID_INPUT, 'Invalid input', parsed.error.flatten()) };
+async function serviceAddRoom(body, auth) {
+  const name = body.name;
+  if (!name || typeof name !== 'string' || name.trim().length === 0) {
+    return { statusCode: 400, response: createErrorResponse(ERROR_CODES.INVALID_INPUT, 'Room name is required') };
   }
+  const displayOrder = body.displayOrder || 0;
 
-  const { clinicId, name, displayOrder } = parsed.data;
+  // Get clinicId from body, auth JWT, or first active clinic
+  let clinicId = body.clinicId;
+  if (!clinicId && auth?.clinicId) clinicId = auth.clinicId;
+  if (!clinicId) {
+    const { data: firstClinic } = await supabase.from('clinics').select('id').eq('is_active', true).limit(1).single();
+    if (firstClinic) clinicId = firstClinic.id;
+  }
+  if (!clinicId) {
+    return { statusCode: 400, response: createErrorResponse(ERROR_CODES.INVALID_INPUT, 'No clinic found') };
+  }
 
   const { data: clinic } = await supabase
     .from('clinics')
@@ -1850,7 +1860,7 @@ module.exports = async function handler(req, res) {
 
       if (method === 'POST' && pathname === '/api/v1/admin/rooms') {
         const body = await parseBody(req);
-        const result = await serviceAddRoom(body);
+        const result = await serviceAddRoom(body, auth);
         return res.status(result.statusCode).json(result.response);
       }
 
