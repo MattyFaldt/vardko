@@ -1321,10 +1321,28 @@ module.exports = async function handler(req, res) {
         return res.status(400).json(createErrorResponse(ERROR_CODES.INVALID_INPUT, 'Email and name are required'));
       }
 
-      // Default org/clinic from first active clinic
-      let organizationId = body.organizationId || ORG_ID;
-      let clinicId = body.clinicId || CLINIC_ID;
+      // Default org/clinic from first active clinic in DB
+      let organizationId = body.organizationId;
+      let clinicId = body.clinicId;
+
+      if (!organizationId || !clinicId) {
+        const { data: firstClinic } = await supabase
+          .from('clinics')
+          .select('id, organization_id')
+          .eq('is_active', true)
+          .limit(1)
+          .single();
+        if (firstClinic) {
+          organizationId = organizationId || firstClinic.organization_id;
+          clinicId = clinicId || firstClinic.id;
+        }
+      }
+
       if (role === 'org_admin') clinicId = null; // org admins are not clinic-scoped
+
+      if (!organizationId) {
+        return res.status(400).json(createErrorResponse(ERROR_CODES.INVALID_INPUT, 'Organization not found'));
+      }
 
       // Generate a temporary password (user should change it on first login)
       const tempPassword = 'Temp' + Math.random().toString(36).slice(2, 10) + '1!';
