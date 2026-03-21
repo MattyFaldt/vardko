@@ -5,10 +5,12 @@
 
 const { Hono } = require('hono');
 const { cors } = require('hono/cors');
-const { handle } = require('@hono/node-server/vercel');
+const { handle } = require('hono/vercel');
 const { SignJWT, jwtVerify } = require('jose');
 const { z } = require('zod');
-const { randomBytes, createHash } = require('node:crypto');
+const crypto = require('crypto');
+const randomBytes = crypto.randomBytes;
+const createHash = crypto.createHash;
 
 // ==========================================================================
 // CONSTANTS
