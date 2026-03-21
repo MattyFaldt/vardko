@@ -1304,6 +1304,19 @@ system.get('/health', (c) => {
 app.route('/system', system);
 
 // =============================================================================
+// Error handler & catch-all
+// =============================================================================
+
+app.onError((err, c) => {
+  console.error('API Error:', err.message, err.stack);
+  return c.json({ success: false, error: { code: 'INTERNAL_ERROR', message: err.message } }, 500);
+});
+
+app.notFound((c) => {
+  return c.json({ success: false, error: { code: 'NOT_FOUND', message: `Route not found: ${c.req.path}` } }, 404);
+});
+
+// =============================================================================
 // Export for Vercel
 // =============================================================================
 
