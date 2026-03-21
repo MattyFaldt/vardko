@@ -366,7 +366,7 @@ Superadmin actions are logged in a dedicated `superadmin_audit_log` table, separ
 - **Security headers**: HSTS, Content-Type enforcement.
 - **Default-deny**: Unauthenticated requests are rejected unless the endpoint is explicitly public.
 - **Environment-based configuration**: Different secrets for development and production.
-- **No default credentials**: Demo accounts are for development only.
+- **No default credentials**: No demo accounts, seed users, or test data in any environment.
 
 ### A06:2021 -- Vulnerable and Outdated Components
 
