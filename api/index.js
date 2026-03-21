@@ -430,14 +430,34 @@ module.exports = async function handler(req, res) {
 
       const { email, password } = parsed.data;
 
-      const { data: user, error: userErr } = await supabase
+      // Try users table first
+      let user = null;
+      let isSuperAdmin = false;
+
+      const { data: normalUser } = await supabase
         .from('users')
         .select('*')
         .eq('email', email.trim().toLowerCase())
         .eq('is_active', true)
         .single();
 
-      if (userErr || !user) {
+      if (normalUser) {
+        user = normalUser;
+      } else {
+        // Fallback: check superadmins table
+        const { data: superUser } = await supabase
+          .from('superadmins')
+          .select('*')
+          .eq('email', email.trim().toLowerCase())
+          .eq('is_active', true)
+          .single();
+        if (superUser) {
+          user = { ...superUser, role: 'superadmin', organization_id: null, clinic_id: null, display_name: 'Mattias Faldt' };
+          isSuperAdmin = true;
+        }
+      }
+
+      if (!user) {
         return res.status(401).json(createErrorResponse(ERROR_CODES.INVALID_CREDENTIALS, 'Invalid email or password'));
       }
 
@@ -446,8 +466,10 @@ module.exports = async function handler(req, res) {
         return res.status(401).json(createErrorResponse(ERROR_CODES.INVALID_CREDENTIALS, 'Invalid email or password'));
       }
 
-      // Update last_login_at
-      await supabase.from('users').update({ last_login_at: new Date().toISOString() }).eq('id', user.id);
+      // Update last_login_at for regular users
+      if (!isSuperAdmin) {
+        await supabase.from('users').update({ last_login_at: new Date().toISOString() }).eq('id', user.id);
+      }
 
       const accessToken = await createAccessToken(user);
       const refreshToken = await createRefreshTokenJWT(user);
