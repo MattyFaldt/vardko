@@ -439,7 +439,8 @@ module.exports = async function handler(req, res) {
   console.log('API handler called:', method, url, pathname);
 
   // CORS headers
-  res.setHeader('Access-Control-Allow-Origin', process.env.CORS_ORIGIN || '*');
+  const corsOrigin = (process.env.CORS_ORIGIN || '*').trim();
+  res.setHeader('Access-Control-Allow-Origin', corsOrigin);
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Staff-Id');
   res.setHeader('Access-Control-Allow-Credentials', 'true');
